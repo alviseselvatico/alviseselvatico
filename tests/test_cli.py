@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from tests.conftest import requires_ffmpeg
+from tests.fake_llm import FakeLlm
 from tests.fake_stt import FakeSpeechToText
 from vme.cli.main import EXIT_BLOCKED, EXIT_ERROR, EXIT_OK, EXIT_USAGE, run
 from vme.storage.migrations import MIGRATIONS
@@ -185,3 +186,66 @@ def test_transcribe_unknown_media_and_unsupported_provider(
     monkeypatch.setenv("VME_STT_PROVIDER", "nope")
     code, payload, _ = _vme("transcribe", "--media", "ghost")
     assert code == EXIT_ERROR and payload["error"] == "TranscriptionError"
+
+
+@requires_ffmpeg
+def test_rank_pipeline_cli(db: Path, audio_wav: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import vme.cli.main as cli
+
+    sentences = [
+        f"Sentence {i} explains a market idea with enough words to pass." for i in range(10)
+    ]
+    monkeypatch.setattr(
+        cli, "build_transcriber", lambda _s: FakeSpeechToText(sentences, pause_ms=200)
+    )
+    fake = FakeLlm()
+    monkeypatch.setattr(cli, "build_llm", lambda _s: fake)
+    _vme("source", "add", "--id", "S001", "--uri", str(audio_wav))
+    _vme(
+        "policy", "add", "--source", "S001", "--basis", "owned", "--reference", "r", "--can-ingest"
+    )
+    _, asset, _ = _vme("media", "register", "--source", "S001", str(audio_wav))
+    _, transcript, _ = _vme("transcribe", "--media", asset["id"])
+    _, cands, _ = _vme(
+        "segment",
+        "--transcript",
+        transcript["id"],
+        "--min-ms",
+        "3000",
+        "--target-ms",
+        "5000",
+        "--max-ms",
+        "8000",
+    )
+    assert len(cands) >= 3
+
+    code, ranked, logs = _vme(
+        "rank", "--transcript", transcript["id"], "--finalists", "2", "--min-ms", "1000",
+        "--min-words", "5",
+    )  # fmt: skip
+    assert code == EXIT_OK, ranked
+    assert ranked["strong_scored"] == 2 and ranked["cheap_scored"] == len(cands)
+    assert ranked["runs"][0]["final_score"] >= ranked["runs"][-1]["final_score"]
+    assert any(log["event"] == "ranking_batch_created" for log in logs)
+    batch_id = ranked["batch"]["id"]
+
+    code, shown, _ = _vme("ranking", "show", batch_id)
+    assert code == EXIT_OK and [r["id"] for r in shown["runs"]] == [r["id"] for r in ranked["runs"]]
+    code, batches, _ = _vme("ranking", "list", "--transcript", transcript["id"])
+    assert code == EXIT_OK and [b["id"] for b in batches] == [batch_id]
+    code, calls, _ = _vme("llm", "list", "--purpose", "candidate_scoring")
+    assert code == EXIT_OK and len(calls) == len(ranked["llm_calls"]) and "response" not in calls[0]
+    code, one, _ = _vme("llm", "show", calls[0]["id"])
+    assert code == EXIT_OK and one["response"]["hook_strength"] <= 1.0
+
+    # no candidates for an unknown segmenter -> visible error
+    code, err, _ = _vme("rank", "--transcript", transcript["id"], "--created-by", "nobody")
+    assert code == EXIT_ERROR and err["error"] == "RankingError"
+
+
+def test_rank_without_models_configured_is_visible_error(
+    db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("VME_LLM_MODEL_STRONG", raising=False)
+    code, payload, _ = _vme("rank", "--transcript", "ghost")
+    assert code == EXIT_ERROR and payload["error"] == "NotFoundError"

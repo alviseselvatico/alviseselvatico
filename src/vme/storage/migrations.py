@@ -98,4 +98,54 @@ MIGRATIONS: tuple[Migration, ...] = (
         CREATE INDEX candidates_transcript_idx ON candidates(transcript_id, start_ms);
         """,
     ),
+    Migration(
+        version=3,
+        name="phase0_llm_calls_ranking",
+        sql="""
+        CREATE TABLE llm_calls (
+            id                       TEXT PRIMARY KEY,
+            purpose                  TEXT    NOT NULL,
+            input_artifact_refs_json TEXT    NOT NULL,
+            prompt_name              TEXT    NOT NULL,
+            prompt_version           TEXT    NOT NULL,
+            provider                 TEXT    NOT NULL,
+            model_alias              TEXT    NOT NULL,
+            model_id_reported        TEXT,
+            parameters_json          TEXT    NOT NULL,
+            response_json            TEXT,
+            validation_status        TEXT    NOT NULL,
+            attempts                 INTEGER NOT NULL,
+            latency_ms               INTEGER NOT NULL,
+            input_tokens             INTEGER,
+            output_tokens            INTEGER,
+            estimated_cost_usd       REAL,
+            error                    TEXT,
+            created_at               TEXT    NOT NULL
+        );
+
+        CREATE TABLE ranking_batches (
+            id              TEXT PRIMARY KEY,
+            transcript_id   TEXT NOT NULL REFERENCES transcripts(id),
+            scoring_version TEXT NOT NULL,
+            weights_version TEXT NOT NULL,
+            prompt_version  TEXT NOT NULL,
+            model_alias     TEXT NOT NULL,
+            created_at      TEXT NOT NULL
+        );
+        CREATE INDEX ranking_batches_transcript_idx ON ranking_batches(transcript_id);
+
+        CREATE TABLE ranking_runs (
+            id               TEXT PRIMARY KEY,
+            ranking_batch_id TEXT NOT NULL REFERENCES ranking_batches(id),
+            candidate_id     TEXT NOT NULL REFERENCES candidates(id),
+            feature_json     TEXT NOT NULL,
+            risk_json        TEXT NOT NULL,
+            final_score      REAL NOT NULL CHECK (final_score >= 0 AND final_score <= 100),
+            rationale        TEXT NOT NULL,
+            llm_call_id      TEXT REFERENCES llm_calls(id),
+            created_at       TEXT NOT NULL,
+            UNIQUE (ranking_batch_id, candidate_id)
+        );
+        """,
+    ),
 )

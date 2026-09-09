@@ -1,5 +1,5 @@
 """``vme`` CLI: ``source``, ``policy``, ``media``, ``transcribe``, ``transcript``,
-``segment``, ``candidate``, ``db migrate``.
+``segment``, ``candidate``, ``rank``, ``ranking``, ``llm``, ``db migrate``.
 
 Every invocation gets a correlation id, logs JSON to stderr and prints one JSON document
 to stdout. Exit codes: 0 ok, 1 error, 2 usage, 3 blocked by the rights gate.
@@ -22,7 +22,11 @@ from vme.config import Settings, load_settings
 from vme.domain.models import BasisType, RightsPolicy, Source, SourceKind, new_id, utc_now
 from vme.ingestion.probe import ProbeError
 from vme.ingestion.register import IngestionError, register_local_media
+from vme.llm.factory import build_llm
 from vme.logs import configure_logging, display_path, get_logger, new_correlation_id
+from vme.ranking.features import PrefilterConfig
+from vme.ranking.service import RankingConfig, rank_transcript
+from vme.ranking.weights import load_weights
 from vme.rights.gate import Action, RightsBlockedError, check
 from vme.segmentation.segmenter import SegmentationConfig
 from vme.segmentation.service import segment_and_store
@@ -213,6 +217,53 @@ def cmd_candidate_list(args: argparse.Namespace, store: Store, _: Settings) -> A
     return store.candidates.list(args.transcript, created_by=args.created_by)
 
 
+def cmd_rank(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    llm = build_llm(settings)
+    weights = load_weights(Path(args.weights) if args.weights else settings.ranking_weights_path)
+    defaults = PrefilterConfig()
+    prefilter = PrefilterConfig(
+        min_ms=args.min_ms if args.min_ms is not None else defaults.min_ms,
+        max_ms=args.max_ms if args.max_ms is not None else defaults.max_ms,
+        min_words=args.min_words if args.min_words is not None else defaults.min_words,
+    )
+    config = RankingConfig(
+        finalists_k=args.finalists or settings.ranking_finalists,
+        max_tokens=settings.llm_max_tokens,
+        vertical=args.vertical or settings.vertical,
+        audience=args.audience or settings.audience,
+        prefilter=prefilter,
+        created_by=args.created_by,
+    )
+    result = rank_transcript(store, args.transcript, llm, weights, config)
+    return {
+        "batch": result.batch,
+        "prefiltered": result.prefiltered,
+        "cheap_scored": result.cheap_scored,
+        "strong_scored": result.strong_scored,
+        "llm_calls": [c.id for c in result.llm_calls],
+        "runs": result.runs,
+    }
+
+
+def cmd_ranking_show(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    batch = store.ranking.get_batch(args.id)
+    return {"batch": batch, "runs": store.ranking.list_runs(batch.id)}
+
+
+def cmd_ranking_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return store.ranking.list_batches(args.transcript)
+
+
+def cmd_llm_show(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return store.llm_calls.get(args.id)
+
+
+def cmd_llm_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return [
+        c.model_dump(mode="json", exclude={"response"}) for c in store.llm_calls.list(args.purpose)
+    ]
+
+
 Handler = Callable[[argparse.Namespace, Store, Settings], Any]
 
 
@@ -323,6 +374,39 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--transcript", required=True)
     p.add_argument("--created-by", help="filter, e.g. segmenter:v0.1.0")
     p.set_defaults(handler=cmd_candidate_list)
+
+    # rank / ranking / llm
+    p = sub.add_parser("rank", help="score and rank a transcript's candidates (LLM funnel)")
+    p.add_argument("--transcript", required=True)
+    p.add_argument("--finalists", type=int, help="strong-model finalists (VME_RANKING_FINALISTS)")
+    p.add_argument(
+        "--created-by", help="only candidates from this segmenter, e.g. segmenter:v0.1.0"
+    )
+    p.add_argument("--weights", help="weights JSON path (default: packaged viral_v0)")
+    p.add_argument("--vertical")
+    p.add_argument("--audience")
+    p.add_argument("--min-ms", type=int, help="prefilter: minimum candidate duration")
+    p.add_argument("--max-ms", type=int, help="prefilter: maximum candidate duration")
+    p.add_argument("--min-words", type=int, help="prefilter: minimum words in the excerpt")
+    p.set_defaults(group="rank", command="run", handler=cmd_rank)
+    ranking = sub.add_parser("ranking", help="ranking batches").add_subparsers(
+        dest="command", required=True
+    )
+    p = ranking.add_parser("show", help="show a batch and its runs (best first)")
+    p.add_argument("id")
+    p.set_defaults(handler=cmd_ranking_show)
+    p = ranking.add_parser("list", help="list batches")
+    p.add_argument("--transcript")
+    p.set_defaults(handler=cmd_ranking_list)
+    llm = sub.add_parser("llm", help="persisted LLM calls").add_subparsers(
+        dest="command", required=True
+    )
+    p = llm.add_parser("show", help="show one LLM call with its structured response")
+    p.add_argument("id")
+    p.set_defaults(handler=cmd_llm_show)
+    p = llm.add_parser("list", help="list LLM calls (without responses)")
+    p.add_argument("--purpose")
+    p.set_defaults(handler=cmd_llm_list)
     return parser
 
 

@@ -3,7 +3,11 @@
 from vme.domain.models import (
     BasisType,
     Candidate,
+    LlmCall,
+    LlmValidationStatus,
     MediaAsset,
+    RankingBatch,
+    RankingRun,
     RightsPolicy,
     Source,
     SourceKind,
@@ -19,7 +23,11 @@ from vme.domain.models import (
 __all__ = [
     "BasisType",
     "Candidate",
+    "LlmCall",
+    "LlmValidationStatus",
     "MediaAsset",
+    "RankingBatch",
+    "RankingRun",
     "RightsPolicy",
     "Source",
     "SourceKind",

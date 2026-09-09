@@ -10,6 +10,7 @@ from __future__ import annotations
 import secrets
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
@@ -307,3 +308,79 @@ class Candidate(_Entity):
     @property
     def duration_ms(self) -> int:
         return self.end_ms - self.start_ms
+
+
+# -------------------------------------------------------------------- LLM + ranking
+
+
+class LlmValidationStatus(StrEnum):
+    VALID = "VALID"
+    INVALID_RETRIED = "INVALID_RETRIED"
+    FAILED = "FAILED"
+
+
+class LlmCall(_Entity):
+    """One row per LLM invocation that influences an output (ARCHITECTURE §6)."""
+
+    id: str = Field(min_length=1)
+    purpose: str = Field(min_length=1)
+    input_artifact_refs: list[str] = Field(default_factory=list)
+    prompt_name: str = Field(min_length=1)
+    prompt_version: str = Field(min_length=1)
+    provider: str = Field(min_length=1)
+    model_alias: str = Field(min_length=1)
+    model_id_reported: str | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    response: dict[str, Any] | None = None
+    validation_status: LlmValidationStatus
+    attempts: int = Field(ge=1)
+    latency_ms: int = Field(ge=0)
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    estimated_cost_usd: float | None = Field(default=None, ge=0)
+    error: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "created_at")
+        return value
+
+
+class RankingBatch(_Entity):
+    """One ranking execution over a transcript's candidates."""
+
+    id: str = Field(min_length=1)
+    transcript_id: str = Field(min_length=1)
+    scoring_version: str = Field(min_length=1)
+    weights_version: str = Field(min_length=1)
+    prompt_version: str = Field(min_length=1)
+    model_alias: str = Field(min_length=1, description="alias of the decisive tier, e.g. strong")
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "created_at")
+        return value
+
+
+class RankingRun(_Entity):
+    """Score of one candidate inside a batch. Components and penalties are persisted."""
+
+    id: str = Field(min_length=1)
+    ranking_batch_id: str = Field(min_length=1)
+    candidate_id: str = Field(min_length=1)
+    features: dict[str, float] = Field(default_factory=dict)
+    risks: dict[str, float] = Field(default_factory=dict)
+    final_score: float = Field(ge=0.0, le=100.0)
+    rationale: str
+    llm_call_id: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "created_at")
+        return value

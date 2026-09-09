@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime
 from typing import Any
@@ -10,7 +11,10 @@ from pydantic import TypeAdapter
 
 from vme.domain.models import (
     Candidate,
+    LlmCall,
     MediaAsset,
+    RankingBatch,
+    RankingRun,
     RightsPolicy,
     Source,
     SourceStatus,
@@ -20,6 +24,9 @@ from vme.domain.models import (
 )
 
 _SEGMENTS = TypeAdapter(list[TranscriptSegment])
+_STR_LIST = TypeAdapter(list[str])
+_FLOATS = TypeAdapter(dict[str, float])
+_JSON_OBJ = TypeAdapter(dict[str, Any])
 
 
 class NotFoundError(LookupError):
@@ -402,6 +409,204 @@ class CandidateRepository:
             topic=row["topic"],
             candidate_text=row["candidate_text"],
             created_by=row["created_by"],
+            created_at=_dt(row["created_at"]) or _fail("created_at"),
+        )
+
+
+class LlmCallRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def add(self, call: LlmCall) -> LlmCall:
+        try:
+            self._conn.execute(
+                """
+                INSERT INTO llm_calls (
+                    id, purpose, input_artifact_refs_json, prompt_name, prompt_version,
+                    provider, model_alias, model_id_reported, parameters_json, response_json,
+                    validation_status, attempts, latency_ms, input_tokens, output_tokens,
+                    estimated_cost_usd, error, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    call.id,
+                    call.purpose,
+                    json.dumps(call.input_artifact_refs),
+                    call.prompt_name,
+                    call.prompt_version,
+                    call.provider,
+                    call.model_alias,
+                    call.model_id_reported,
+                    json.dumps(call.parameters, sort_keys=True, default=str),
+                    json.dumps(call.response, sort_keys=True, default=str)
+                    if call.response is not None
+                    else None,
+                    call.validation_status.value,
+                    call.attempts,
+                    call.latency_ms,
+                    call.input_tokens,
+                    call.output_tokens,
+                    call.estimated_cost_usd,
+                    call.error,
+                    _iso(call.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = f"llm call {call.id!r} already exists"
+            raise DuplicateRecordError(msg) from exc
+        return call
+
+    def get(self, call_id: str) -> LlmCall:
+        row = self._conn.execute("SELECT * FROM llm_calls WHERE id = ?", (call_id,)).fetchone()
+        if row is None:
+            msg = f"llm call {call_id!r} not found"
+            raise NotFoundError(msg)
+        return self._to_model(row)
+
+    def list(self, purpose: str | None = None) -> list[LlmCall]:
+        if purpose is None:
+            rows = self._conn.execute("SELECT * FROM llm_calls ORDER BY created_at, id")
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM llm_calls WHERE purpose = ? ORDER BY created_at, id", (purpose,)
+            )
+        return [self._to_model(r) for r in rows.fetchall()]
+
+    @staticmethod
+    def _to_model(row: sqlite3.Row) -> LlmCall:
+        return LlmCall(
+            id=row["id"],
+            purpose=row["purpose"],
+            input_artifact_refs=_STR_LIST.validate_json(row["input_artifact_refs_json"]),
+            prompt_name=row["prompt_name"],
+            prompt_version=row["prompt_version"],
+            provider=row["provider"],
+            model_alias=row["model_alias"],
+            model_id_reported=row["model_id_reported"],
+            parameters=_JSON_OBJ.validate_json(row["parameters_json"]),
+            response=_JSON_OBJ.validate_json(row["response_json"])
+            if row["response_json"] is not None
+            else None,
+            validation_status=row["validation_status"],
+            attempts=row["attempts"],
+            latency_ms=row["latency_ms"],
+            input_tokens=row["input_tokens"],
+            output_tokens=row["output_tokens"],
+            estimated_cost_usd=row["estimated_cost_usd"],
+            error=row["error"],
+            created_at=_dt(row["created_at"]) or _fail("created_at"),
+        )
+
+
+class RankingRepository:
+    """Batches and their runs (immutable once written)."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def add_batch(self, batch: RankingBatch) -> RankingBatch:
+        try:
+            self._conn.execute(
+                """
+                INSERT INTO ranking_batches (
+                    id, transcript_id, scoring_version, weights_version, prompt_version,
+                    model_alias, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    batch.id,
+                    batch.transcript_id,
+                    batch.scoring_version,
+                    batch.weights_version,
+                    batch.prompt_version,
+                    batch.model_alias,
+                    _iso(batch.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = f"ranking batch {batch.id!r} already exists or transcript missing"
+            raise DuplicateRecordError(msg) from exc
+        return batch
+
+    def get_batch(self, batch_id: str) -> RankingBatch:
+        row = self._conn.execute(
+            "SELECT * FROM ranking_batches WHERE id = ?", (batch_id,)
+        ).fetchone()
+        if row is None:
+            msg = f"ranking batch {batch_id!r} not found"
+            raise NotFoundError(msg)
+        return self._batch(row)
+
+    def list_batches(self, transcript_id: str | None = None) -> list[RankingBatch]:
+        if transcript_id is None:
+            rows = self._conn.execute("SELECT * FROM ranking_batches ORDER BY created_at, id")
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM ranking_batches WHERE transcript_id = ? ORDER BY created_at, id",
+                (transcript_id,),
+            )
+        return [self._batch(r) for r in rows.fetchall()]
+
+    def add_runs(self, runs: list[RankingRun]) -> list[RankingRun]:
+        try:
+            self._conn.executemany(
+                """
+                INSERT INTO ranking_runs (
+                    id, ranking_batch_id, candidate_id, feature_json, risk_json, final_score,
+                    rationale, llm_call_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        r.id,
+                        r.ranking_batch_id,
+                        r.candidate_id,
+                        json.dumps(r.features, sort_keys=True),
+                        json.dumps(r.risks, sort_keys=True),
+                        r.final_score,
+                        r.rationale,
+                        r.llm_call_id,
+                        _iso(r.created_at),
+                    )
+                    for r in runs
+                ],
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = "ranking run duplicate, or batch/candidate/llm_call reference missing"
+            raise DuplicateRecordError(msg) from exc
+        return runs
+
+    def list_runs(self, batch_id: str) -> list[RankingRun]:
+        rows = self._conn.execute(
+            "SELECT * FROM ranking_runs WHERE ranking_batch_id = ? "
+            "ORDER BY final_score DESC, candidate_id",
+            (batch_id,),
+        )
+        return [self._run(r) for r in rows.fetchall()]
+
+    @staticmethod
+    def _batch(row: sqlite3.Row) -> RankingBatch:
+        return RankingBatch(
+            id=row["id"],
+            transcript_id=row["transcript_id"],
+            scoring_version=row["scoring_version"],
+            weights_version=row["weights_version"],
+            prompt_version=row["prompt_version"],
+            model_alias=row["model_alias"],
+            created_at=_dt(row["created_at"]) or _fail("created_at"),
+        )
+
+    @staticmethod
+    def _run(row: sqlite3.Row) -> RankingRun:
+        return RankingRun(
+            id=row["id"],
+            ranking_batch_id=row["ranking_batch_id"],
+            candidate_id=row["candidate_id"],
+            features=_FLOATS.validate_json(row["feature_json"]),
+            risks=_FLOATS.validate_json(row["risk_json"]),
+            final_score=row["final_score"],
+            rationale=row["rationale"],
+            llm_call_id=row["llm_call_id"],
             created_at=_dt(row["created_at"]) or _fail("created_at"),
         )
 

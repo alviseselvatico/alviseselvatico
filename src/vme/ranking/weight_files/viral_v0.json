@@ -1,0 +1,24 @@
+{
+  "version": "viral_v0.1.0",
+  "components": {
+    "hook_strength": 14,
+    "novelty": 9,
+    "authority": 7,
+    "emotion": 8,
+    "tension": 8,
+    "information_density": 8,
+    "clarity": 8,
+    "self_containedness": 10,
+    "topic_relevance": 8,
+    "quotability": 8,
+    "visual_editability": 5,
+    "audience_fit": 7
+  },
+  "penalties": {
+    "context_dependency": 15,
+    "factual_risk": 20,
+    "brand_safety_risk": 30,
+    "overclaim_risk": 15,
+    "rights_risk": 40
+  }
+}

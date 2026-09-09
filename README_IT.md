@@ -75,7 +75,14 @@ uv run vme transcribe --media <media_id>          # faster-whisper locale (D011)
 uv run vme transcript show <transcript_id> --full  # segmenti e parole con timestamp
 uv run vme segment --transcript <transcript_id>    # candidati deterministici (segmenter:v0.1.0)
 uv run vme candidate list --transcript <transcript_id>
+uv run vme rank --transcript <transcript_id>        # funnel: prefilter -> cheap -> strong (richiede VME_LLM_MODEL_*)
+uv run vme ranking show <batch_id>                   # run ordinati per punteggio, componenti e penalità persistiti
+uv run vme llm show <llm_call_id>                    # ogni chiamata LLM: prompt version, modello riportato, token, risposta
 ```
+
+Il ranking usa i pesi versionati in `src/vme/ranking/weight_files/viral_v0.json`
+(`VME_RANKING_WEIGHTS_PATH` per un file alternativo) e gli alias `cheap`/`strong` risolti da
+`VME_LLM_MODEL_CHEAP` / `VME_LLM_MODEL_STRONG` con `ANTHROPIC_API_KEY` (D012).
 
 Fixture vocali per i test di trascrizione: vedi `fixtures/speech/README.md`
 (`uv run python scripts/fetch_speech_fixtures.py` scarica sample di pubblico dominio con hash

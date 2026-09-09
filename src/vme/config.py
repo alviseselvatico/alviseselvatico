@@ -27,6 +27,19 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr = Field(
         default=SecretStr(""), validation_alias="ANTHROPIC_API_KEY"
     )
+    llm_max_tokens: int = Field(default=8192, validation_alias="VME_LLM_MAX_TOKENS", ge=256)
+    llm_max_attempts: int = Field(default=2, validation_alias="VME_LLM_MAX_ATTEMPTS", ge=1, le=5)
+    llm_effort: str = Field(default="", validation_alias="VME_LLM_EFFORT")
+
+    # --- Ranking (Viral Score v0)
+    ranking_finalists: int = Field(default=5, validation_alias="VME_RANKING_FINALISTS", ge=1)
+    ranking_weights_path: Path | None = Field(
+        default=None, validation_alias="VME_RANKING_WEIGHTS_PATH"
+    )
+    vertical: str = Field(default="general", validation_alias="VME_VERTICAL")
+    audience: str = Field(
+        default="general English-speaking short-form viewers", validation_alias="VME_AUDIENCE"
+    )
 
     # --- Transcription (D011)
     stt_provider: str = Field(default="faster_whisper", validation_alias="VME_STT_PROVIDER")

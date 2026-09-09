@@ -6,6 +6,7 @@ readme = "README_IT.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
 dependencies = [
+    "anthropic>=1.0",
     "faster-whisper>=1.1",
     "pydantic>=2.11",
     "pydantic-settings>=2.10",

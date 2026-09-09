@@ -13,7 +13,9 @@ from vme.logs import get_logger
 from vme.storage.migrations import MIGRATIONS
 from vme.storage.repositories import (
     CandidateRepository,
+    LlmCallRepository,
     MediaAssetRepository,
+    RankingRepository,
     RightsPolicyRepository,
     SourceRepository,
     TranscriptRepository,
@@ -91,6 +93,8 @@ class Store:
         self.media = MediaAssetRepository(conn)
         self.transcripts = TranscriptRepository(conn)
         self.candidates = CandidateRepository(conn)
+        self.llm_calls = LlmCallRepository(conn)
+        self.ranking = RankingRepository(conn)
 
     @classmethod
     def open(cls, db_path: Path | str) -> Store:
