@@ -37,7 +37,7 @@ from vme.editorial.service import EditorialConfig, generate_editorial
 from vme.evaluation.benchmark import compare_benchmarks, run_benchmark
 from vme.ingestion.probe import ProbeError
 from vme.ingestion.register import IngestionError, register_local_media
-from vme.labeling.service import add_label, golden_rows
+from vme.labeling.service import add_label, golden_rows, import_labels
 from vme.labeling.taxonomy import load_taxonomy
 from vme.llm.factory import build_llm
 from vme.logs import configure_logging, display_path, get_logger, new_correlation_id
@@ -528,6 +528,52 @@ def cmd_label_add(args: argparse.Namespace, store: Store, settings: Settings) ->
     )
 
 
+def cmd_label_import(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    records = [
+        json.loads(line)
+        for line in Path(args.file).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    result = import_labels(
+        store,
+        records,
+        reviewer=_reviewer(args, settings),
+        taxonomy=load_taxonomy(settings.taxonomy_path),
+        provisional=args.provisional,
+    )
+    return {
+        "added": len(result.added),
+        "errors": result.errors,
+        "label_ids": [lb.id for lb in result.added],
+    }
+
+
+def cmd_candidate_export(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    """Candidates without scores, for blind labeling."""
+    transcripts = [args.transcript] if args.transcript else [t.id for t in store.transcripts.list()]
+    rows: list[dict[str, Any]] = []
+    for tid in transcripts:
+        for c in store.candidates.list(tid, created_by=args.created_by):
+            rows.append(
+                {
+                    "candidate_id": c.id,
+                    "transcript_id": tid,
+                    "start_ms": c.start_ms,
+                    "end_ms": c.end_ms,
+                    "duration_s": round(c.duration_ms / 1000, 1),
+                    "context_before": c.context_before,
+                    "text": c.candidate_text,
+                    "context_after": c.context_after,
+                }
+            )
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8"
+    )
+    return {"path": str(out), "candidates": len(rows), "transcripts": len(transcripts)}
+
+
 def cmd_label_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
     return store.labels.list(candidate_id=args.candidate, transcript_id=args.transcript)
 
@@ -686,6 +732,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--transcript", required=True)
     p.add_argument("--created-by", help="filter, e.g. segmenter:v0.1.0")
     p.set_defaults(handler=cmd_candidate_list)
+    p = candidate.add_parser("export", help="candidates without scores (JSONL) for blind labeling")
+    p.add_argument("--out", required=True)
+    p.add_argument("--transcript", help="default: every transcript")
+    p.add_argument("--created-by")
+    p.set_defaults(handler=cmd_candidate_export)
 
     # rank / ranking / llm
     p = sub.add_parser("rank", help="score and rank a transcript's candidates (LLM funnel)")
@@ -867,6 +918,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reviewer")
     p.add_argument("--note")
     p.set_defaults(handler=cmd_label_add)
+    p = label.add_parser("import", help="bulk labels from JSONL (one object per line)")
+    p.add_argument("--file", required=True)
+    p.add_argument("--provisional", action="store_true")
+    p.add_argument("--reviewer")
+    p.set_defaults(handler=cmd_label_import)
     p = label.add_parser("list", help="list labels")
     p.add_argument("--candidate")
     p.add_argument("--transcript")

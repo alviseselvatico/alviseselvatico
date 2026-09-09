@@ -98,6 +98,70 @@ def add_label(
 
 
 @dataclass(frozen=True, slots=True)
+class ImportResult:
+    added: list[Label]
+    errors: list[dict[str, Any]]  # {"line": n, "candidate_id": ..., "error": ...}
+
+
+def import_labels(
+    store: Store,
+    records: list[dict[str, Any]],
+    *,
+    reviewer: str,
+    taxonomy: ReasonTaxonomy,
+    provisional: bool = False,
+    now: datetime | None = None,
+) -> ImportResult:
+    """Bulk-add labels from plain dicts (one per JSONL line). Bad rows are reported, not fatal.
+
+    Accepted keys: candidate_id (required), decision (required), boundary_correct,
+    hook_quality, factual_risk, rights_risk, rejection_reasons (list or comma string),
+    expected_performance, edited_text, notes, reviewer (overrides), provisional (overrides).
+    """
+    added: list[Label] = []
+    errors: list[dict[str, Any]] = []
+    for line_no, rec in enumerate(records, start=1):
+        try:
+            reasons_raw = rec.get("rejection_reasons") or []
+            reasons = (
+                [r for r in str(reasons_raw).split(",")]
+                if isinstance(reasons_raw, str)
+                else list(reasons_raw)
+            )
+            bucket = rec.get("expected_performance")
+            label = add_label(
+                store,
+                str(rec["candidate_id"]),
+                reviewer=str(rec.get("reviewer") or reviewer),
+                decision=LabelDecision(str(rec["decision"]).lower()),
+                taxonomy=taxonomy,
+                boundary_correct=rec.get("boundary_correct"),
+                hook_quality=rec.get("hook_quality"),
+                factual_risk=rec.get("factual_risk"),
+                rights_risk=rec.get("rights_risk"),
+                rejection_reasons=reasons,
+                expected_performance=PerformanceBucket(str(bucket).lower()) if bucket else None,
+                edited_text=rec.get("edited_text"),
+                notes=rec.get("notes"),
+                provisional=bool(rec.get("provisional", provisional)),
+                now=now,
+            )
+            added.append(label)
+        except Exception as exc:
+            errors.append(
+                {
+                    "line": line_no,
+                    "candidate_id": rec.get("candidate_id"),
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+    log.info(
+        "labels_imported", extra={"added": len(added), "errors": len(errors), "reviewer": reviewer}
+    )
+    return ImportResult(added=added, errors=errors)
+
+
+@dataclass(frozen=True, slots=True)
 class GoldenRow:
     """One candidate with its aggregated human judgement (and the latest ranking, if any)."""
 

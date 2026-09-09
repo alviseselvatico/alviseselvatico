@@ -263,3 +263,36 @@ def test_provisional_share_is_reported(store: Store, audio_wav: Path, artifacts_
     assert by_id[cands[0]].provisional is True and by_id[cands[1]].provisional is False
     assert by_id[cands[1]].decision is LabelDecision.REJECT
     assert store.labels.get(store.labels.list(candidate_id=cands[0])[0].id).provisional is True
+
+
+@requires_ffmpeg
+def test_import_labels_reports_bad_rows_and_keeps_good_ones(
+    store: Store, audio_wav: Path, artifacts_dir: Path
+) -> None:
+    from vme.labeling.service import import_labels
+
+    _, cands = _pipeline(store, audio_wav, artifacts_dir)
+    records = [
+        {
+            "candidate_id": cands[0],
+            "decision": "approve",
+            "hook_quality": 4,
+            "expected_performance": "HIGH",
+        },
+        {
+            "candidate_id": cands[1],
+            "decision": "reject",
+            "rejection_reasons": "weak_hook, too_long",
+        },
+        {"candidate_id": cands[1], "decision": "reject", "rejection_reasons": ["nope"]},
+        {"candidate_id": "ghost", "decision": "approve"},
+        {"candidate_id": cands[2], "decision": "maybe"},
+    ]
+    res = import_labels(store, records, reviewer="bot", taxonomy=TAX, provisional=True, now=NOW)
+    assert len(res.added) == 2 and all(lb.provisional and lb.reviewer == "bot" for lb in res.added)
+    assert res.added[0].expected_performance is PerformanceBucket.HIGH
+    assert res.added[1].rejection_reasons == ["weak_hook", "too_long"]
+    assert [e["line"] for e in res.errors] == [3, 4, 5]
+    assert (
+        "UnknownReasonError" in res.errors[0]["error"] and "NotFoundError" in res.errors[1]["error"]
+    )
