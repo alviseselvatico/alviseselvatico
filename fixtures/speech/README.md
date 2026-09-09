@@ -21,6 +21,7 @@ the SHA-256 of the exact bytes and prints the rights evidence for each. Current 
 | name | file | length | rights basis | evidence |
 |------|------|--------|--------------|----------|
 | `jfk` | `external/jfk.wav` | 11 s | public domain, US federal government work (17 U.S.C. §105) — candidate, operator to confirm | JFK inaugural address 1961-01-20; copy from `ggerganov/whisper.cpp` `samples/jfk.wav` |
+| `librivox_heartofamystery_01` | `external/librivox_heartofamystery_01.mp3` | 16 min 38 s | public domain (LibriVox recording of a 1901 work) — candidate, operator to confirm | archive.org item `heartofamystery_2005_librivox`, licenseurl publicdomain/mark/1.0, SHA-1 published by archive.org |
 
 Candidates reviewed but **not** added:
 

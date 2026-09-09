@@ -122,11 +122,11 @@ def test_build_plan_from_approved_draft(
     kinds = [i.kind for i in plan.timeline]
     assert kinds == [TimelineKind.CARD, TimelineKind.SOURCE, TimelineKind.CARD]
     hook, src, outro = plan.timeline
-    assert hook.title.startswith("Why this moment") and hook.duration_ms == 1500
+    assert hook.title.startswith("Why this moment") and hook.duration_ms >= 1500
     assert src.captions and src.source_start_ms == 0
-    assert outro.title.startswith("Context") and outro.duration_ms == 2000
+    assert outro.title.startswith("Context") and outro.duration_ms >= 2000
     assert plan.overlay_config.attribution_text == "Source: operator archive"
-    assert plan.total_duration_ms == 1500 + src.duration_ms + 2000
+    assert plan.total_duration_ms == hook.duration_ms + src.duration_ms + outro.duration_ms
     assert store.renders.get_plan(plan.id) == plan
     written = json.loads((artifacts_dir / "render_plans" / f"{plan.id}.json").read_text())
     assert written["id"] == plan.id and len(written["timeline"]) == 3
@@ -277,3 +277,34 @@ def test_render_refuses_when_draft_no_longer_approved_or_source_changed(
     with pytest.raises(RenderError, match="no longer matches"):
         render_plan_to_file(store, plan.id, settings, artifacts_dir=artifacts_dir, now=NOW)
     assert store.renders.list_renders(plan.id) == []
+
+
+def test_card_duration_scales_with_words() -> None:
+    from vme.rendering.plan import card_duration_ms
+
+    assert card_duration_ms("short", minimum_ms=2500) == 2500
+    forty = " ".join(["word"] * 40)
+    assert 2500 < card_duration_ms(forty, minimum_ms=2500) <= 9000
+    assert card_duration_ms(" ".join(["w"] * 500), minimum_ms=2500) == 9000
+
+
+def test_editorial_schema_enforces_card_sizes() -> None:
+    from pydantic import ValidationError
+
+    from vme.editorial.schemas import EditorialDraft
+
+    base = {
+        "hook": "h",
+        "commentary_before": "b",
+        "source_excerpt_plan": [{"start_ms": 0, "end_ms": 10, "purpose": "p"}],
+        "commentary_after": "a",
+        "title_options": ["t"],
+        "cta": None,
+        "generated_claims": [],
+        "transformation_summary": "s",
+    }
+    EditorialDraft.model_validate(base)
+    with pytest.raises(ValidationError, match="commentary_before is"):
+        EditorialDraft.model_validate({**base, "commentary_before": "x" * 281})
+    with pytest.raises(ValidationError, match="hook is"):
+        EditorialDraft.model_validate({**base, "hook": "x" * 111})

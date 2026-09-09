@@ -16,6 +16,10 @@ excerpts of authorized long-form speech into short vertical videos with ORIGINAL
 Phase 0 output is text only: a hook card, commentary text shown before/after the excerpt,
 title options and an optional call to action. There is no narration and no synthetic voice.
 
+Sizes (hard limits, the output is rejected otherwise): hook <= 110 characters;
+commentary_before <= 280 characters; commentary_after <= 280 characters; each title <= 100
+characters; cta <= 140 characters. Cards are on screen for a few seconds: write tight.
+
 Rules (mandatory):
 - Add value through context, explanation, analysis or synthesis. Cropping plus captions plus a
   generic hook is not enough.

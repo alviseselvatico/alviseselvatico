@@ -39,6 +39,18 @@ class PlanError(RuntimeError):
     pass
 
 
+_WORDS_PER_SECOND = 2.6  # comfortable on-screen reading pace
+_CARD_PADDING_MS = 800
+_MAX_CARD_MS = 9000
+
+
+def card_duration_ms(*texts: str, minimum_ms: int) -> int:
+    """Deterministic reading time for a card, never below ``minimum_ms``."""
+    words = sum(len(t.split()) for t in texts)
+    reading = round((words / _WORDS_PER_SECOND) * 1000) + _CARD_PADDING_MS
+    return min(_MAX_CARD_MS, max(minimum_ms, reading))
+
+
 @dataclass(frozen=True, slots=True)
 class PlanConfig:
     width: int = 1080
@@ -114,7 +126,9 @@ def build_render_plan(
     timeline: list[TimelineItem] = [
         TimelineItem(
             kind=TimelineKind.CARD,
-            duration_ms=config.hook_ms,
+            duration_ms=card_duration_ms(
+                draft.hook, draft.commentary_before, minimum_ms=config.hook_ms
+            ),
             title=draft.hook,
             body=draft.commentary_before,
         )
@@ -133,7 +147,9 @@ def build_render_plan(
         timeline.append(
             TimelineItem(
                 kind=TimelineKind.CARD,
-                duration_ms=config.outro_ms,
+                duration_ms=card_duration_ms(
+                    draft.commentary_after, draft.cta or "", minimum_ms=config.outro_ms
+                ),
                 title=draft.commentary_after,
                 body=draft.cta or "",
             )

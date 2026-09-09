@@ -58,6 +58,24 @@ FIXTURES: tuple[Fixture, ...] = (
         ),
         expected_phrases=("my fellow americans", "your country", "do for you"),
     ),
+    Fixture(
+        name="librivox_heartofamystery_01",
+        url=(
+            "https://archive.org/download/heartofamystery_2005_librivox/"
+            "heartofamystery_01_meade_64kb.mp3"
+        ),
+        sha256="64fe8e24c43140b1de31d55ec62ace9c68d0e7eec8ef083345b7a7ae63d5ec0c",
+        rights_basis="PUBLIC_DOMAIN (LibriVox recording; operator to confirm before non-test use)",
+        evidence=(
+            "LibriVox recording (chapter 1, 16 min 38 s, English, reader J. M. Smallheer) of "
+            "'The Heart of a Mystery' by L. T. Meade and Robert Eustace (1901). LibriVox "
+            "releases all recordings into the public domain; archive.org item "
+            "heartofamystery_2005_librivox carries licenseurl "
+            "creativecommons.org/publicdomain/mark/1.0/ and lists this file with SHA-1 "
+            "fa22aa62e0ed114e1d265bdfe7adfcc4b4547ccb. MP3 22.05 kHz mono 64 kbps."
+        ),
+        expected_phrases=("librivox", "heart of a mystery"),
+    ),
 )
 
 

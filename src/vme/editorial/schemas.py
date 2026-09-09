@@ -31,6 +31,14 @@ class ExcerptPlanItem(BaseModel):
         return self
 
 
+#: Card-sized text limits (characters). Cards are read, not scrolled: a 3-4 s card holds
+#: about 40 words. Violations fail validation and trigger the adapter's bounded retry.
+MAX_HOOK_CHARS = 110
+MAX_COMMENTARY_CHARS = 280
+MAX_TITLE_CHARS = 100
+MAX_CTA_CHARS = 140
+
+
 class EditorialDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -48,6 +56,20 @@ class EditorialDraft(BaseModel):
         if not self.hook.strip():
             msg = "hook must not be empty"
             raise ValueError(msg)
+        limits = (
+            ("hook", self.hook, MAX_HOOK_CHARS),
+            ("commentary_before", self.commentary_before, MAX_COMMENTARY_CHARS),
+            ("commentary_after", self.commentary_after, MAX_COMMENTARY_CHARS),
+            ("cta", self.cta or "", MAX_CTA_CHARS),
+        )
+        for name, value, limit in limits:
+            if len(value.strip()) > limit:
+                msg = f"{name} is {len(value.strip())} characters; maximum is {limit}"
+                raise ValueError(msg)
+        for title in self.title_options:
+            if len(title.strip()) > MAX_TITLE_CHARS:
+                msg = f"title option longer than {MAX_TITLE_CHARS} characters: {title[:40]!r}..."
+                raise ValueError(msg)
         if not [t for t in self.title_options if t.strip()]:
             msg = "at least one title option is required"
             raise ValueError(msg)

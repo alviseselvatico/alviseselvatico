@@ -23,6 +23,11 @@ _FONT_CANDIDATES = (
 )
 
 
+_LINE_HEIGHT = 1.3  # drawtext line height relative to font size (line_spacing included)
+_MIN_FONT = 28
+_GAP = 60
+
+
 class RenderError(RuntimeError):
     pass
 
@@ -110,6 +115,17 @@ class _Graph:
             parts.append(f"enable='{enable}'")
         return "drawtext=" + ":".join(parts)
 
+    def _fit(self, text: str, size: int, wrap: int, max_h: int) -> tuple[str, int, int]:
+        """Wrap and shrink deterministically until the block fits ``max_h`` pixels."""
+        while True:
+            wrapped = wrap_text(text, wrap)
+            lines = wrapped.count("\n") + 1
+            height = round(lines * size * _LINE_HEIGHT)
+            if height <= max_h or size <= _MIN_FONT:
+                return wrapped, size, height
+            size = max(_MIN_FONT, size - 4)
+            wrap = wrap + 2
+
     def card(self, item: TimelineItem, i: int) -> None:
         w, h, fps = self.plan.width, self.plan.height, self.settings.fps
         ov = self.plan.overlay_config
@@ -119,24 +135,20 @@ class _Graph:
         )
         a = self.add_input(["-f", "lavfi", "-t", dur, "-i", "anullsrc=r=48000:cl=stereo"])
         chain = [f"[{v}:v]format=yuv420p"]
-        if item.title.strip():
-            chain.append(
-                self.drawtext(
-                    wrap_text(item.title, ov.wrap_chars),
-                    ov.hook_font_size,
-                    "(h-text_h)/2-120",
-                    box=False,
-                )
-            )
-        if item.body.strip():
-            chain.append(
-                self.drawtext(
-                    wrap_text(item.body, ov.wrap_chars + 10),
-                    ov.body_font_size,
-                    "(h-text_h)/2+180",
-                    box=False,
-                )
-            )
+        usable = h - 2 * ov.safe_margin_px
+        title = item.title.strip()
+        body = item.body.strip()
+        blocks: list[tuple[str, int, int]] = []
+        if title:
+            blocks.append(self._fit(title, ov.hook_font_size, ov.wrap_chars, usable // 2))
+        if body:
+            room = usable - (blocks[0][2] + _GAP if blocks else 0)
+            blocks.append(self._fit(body, ov.body_font_size, ov.wrap_chars + 10, room))
+        total = sum(b[2] for b in blocks) + (_GAP if len(blocks) == 2 else 0)
+        y = max(ov.safe_margin_px, (h - total) // 2)
+        for text, size, height in blocks:
+            chain.append(self.drawtext(text, size, str(y), box=False))
+            y += height + _GAP
         chain.append(f"setsar=1[v{i}]")
         self.filters.append(",".join(chain))
         self.filters.append(f"[{a}:a]aresample=48000[a{i}]")
