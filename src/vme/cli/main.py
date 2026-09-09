@@ -37,7 +37,7 @@ from vme.editorial.service import EditorialConfig, generate_editorial
 from vme.evaluation.benchmark import compare_benchmarks, run_benchmark
 from vme.ingestion.probe import ProbeError
 from vme.ingestion.register import IngestionError, register_local_media
-from vme.labeling.service import add_label, golden_rows, import_labels
+from vme.labeling.service import add_label, candidate_key, golden_rows, import_labels
 from vme.labeling.taxonomy import load_taxonomy
 from vme.llm.factory import build_llm
 from vme.logs import configure_logging, display_path, get_logger, new_correlation_id
@@ -557,6 +557,7 @@ def cmd_candidate_export(args: argparse.Namespace, store: Store, _: Settings) ->
             rows.append(
                 {
                     "candidate_id": c.id,
+                    "candidate_key": candidate_key(store, c),
                     "transcript_id": tid,
                     "start_ms": c.start_ms,
                     "end_ms": c.end_ms,
@@ -588,7 +589,14 @@ def cmd_golden_export(args: argparse.Namespace, store: Store, _: Settings) -> An
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8") as fh:
         for row in rows:
-            fh.write(json.dumps(row.to_json(), ensure_ascii=False, sort_keys=True) + "\n")
+            fh.write(
+                json.dumps(
+                    row.to_json(candidate_key(store, row.candidate)),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                + "\n"
+            )
     approved = sum(r.decision.value == "approve" for r in rows)
     return {
         "path": str(out),

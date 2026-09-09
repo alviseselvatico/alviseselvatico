@@ -33,6 +33,34 @@ class LabelError(RuntimeError):
     pass
 
 
+def candidate_key(store: Store, candidate: Candidate) -> str:
+    """Database-independent identity: media sha256 plus the span. Survives a re-run of the
+    pipeline on the same file as long as segmentation lands on the same boundaries."""
+    transcript = store.transcripts.get(candidate.transcript_id)
+    asset = store.media.get(transcript.media_asset_id)
+    return f"{asset.sha256}:{candidate.start_ms}-{candidate.end_ms}"
+
+
+def resolve_candidate_key(store: Store, key: str) -> str:
+    """Return the candidate id for a key, or raise ``LabelError`` when none matches."""
+    try:
+        sha, span = key.split(":", 1)
+        start_s, end_s = span.split("-", 1)
+        start, end = int(start_s), int(end_s)
+    except ValueError as exc:
+        msg = f"malformed candidate_key {key!r}; expected <sha256>:<start_ms>-<end_ms>"
+        raise LabelError(msg) from exc
+    for asset in store.media.list():
+        if asset.sha256 != sha:
+            continue
+        for transcript in store.transcripts.list(asset.id):
+            for c in store.candidates.list(transcript.id):
+                if c.start_ms == start and c.end_ms == end:
+                    return c.id
+    msg = f"no candidate matches key {key!r} in this database"
+    raise LabelError(msg)
+
+
 def add_label(
     store: Store,
     candidate_id: str,
@@ -122,6 +150,7 @@ def import_labels(
     errors: list[dict[str, Any]] = []
     for line_no, rec in enumerate(records, start=1):
         try:
+            cid = rec.get("candidate_id") or resolve_candidate_key(store, str(rec["candidate_key"]))
             reasons_raw = rec.get("rejection_reasons") or []
             reasons = (
                 [r for r in str(reasons_raw).split(",")]
@@ -131,7 +160,7 @@ def import_labels(
             bucket = rec.get("expected_performance")
             label = add_label(
                 store,
-                str(rec["candidate_id"]),
+                str(cid),
                 reviewer=str(rec.get("reviewer") or reviewer),
                 decision=LabelDecision(str(rec["decision"]).lower()),
                 taxonomy=taxonomy,
@@ -173,8 +202,9 @@ class GoldenRow:
     run: RankingRun | None
     provisional: bool = False  # True when only provisional labels back the judgement
 
-    def to_json(self) -> dict[str, Any]:
+    def to_json(self, key: str | None = None) -> dict[str, Any]:
         return {
+            "candidate_key": key,
             "candidate": self.candidate.model_dump(mode="json"),
             "decision": self.decision.value,
             "relevance": self.relevance,

@@ -1,0 +1,50 @@
+{
+  "prices_version": "anthropic_2026-06-24",
+  "currency": "USD",
+  "total_cost": 1.102832,
+  "is_lower_bound": false,
+  "unmetered_attempts": 0,
+  "wasted_cost": 0,
+  "total_calls": 119,
+  "total_input_tokens": 197185,
+  "total_output_tokens": 62691,
+  "unpriced_models": [],
+  "counts": {
+    "media_assets": 4,
+    "transcripts": 4,
+    "candidates": 99,
+    "drafts": 0,
+    "approved_drafts": 0,
+    "renders": 0
+  },
+  "cost_per_approved_short": null,
+  "cost_per_render": null,
+  "stages": [
+    {
+      "purpose": "candidate_scoring",
+      "model_alias": "cheap",
+      "model_id": "claude-haiku-4-5-20251001",
+      "calls": 99,
+      "failed": 0,
+      "retried": 0,
+      "input_tokens": 156517,
+      "output_tokens": 41215,
+      "avg_latency_ms": 8709,
+      "unmetered_attempts": 0,
+      "cost": 0.362592
+    },
+    {
+      "purpose": "candidate_scoring",
+      "model_alias": "strong",
+      "model_id": "claude-opus-5",
+      "calls": 20,
+      "failed": 0,
+      "retried": 0,
+      "input_tokens": 40668,
+      "output_tokens": 21476,
+      "avg_latency_ms": 14741,
+      "unmetered_attempts": 0,
+      "cost": 0.74024
+    }
+  ]
+}

@@ -296,3 +296,33 @@ def test_import_labels_reports_bad_rows_and_keeps_good_ones(
     assert (
         "UnknownReasonError" in res.errors[0]["error"] and "NotFoundError" in res.errors[1]["error"]
     )
+
+
+@requires_ffmpeg
+def test_candidate_key_round_trip_and_import_by_key(
+    store: Store, audio_wav: Path, artifacts_dir: Path
+) -> None:
+    from vme.labeling.service import candidate_key, import_labels, resolve_candidate_key
+
+    _, cands = _pipeline(store, audio_wav, artifacts_dir)
+    c = store.candidates.get(cands[0])
+    key = candidate_key(store, c)
+    sha = store.media.list()[0].sha256
+    assert key == f"{sha}:{c.start_ms}-{c.end_ms}"
+    assert resolve_candidate_key(store, key) == c.id
+    with pytest.raises(LabelError, match="no candidate matches"):
+        resolve_candidate_key(store, f"{sha}:1-2")
+    with pytest.raises(LabelError, match="malformed"):
+        resolve_candidate_key(store, "garbage")
+    res = import_labels(
+        store, [{"candidate_key": key, "decision": "approve"}], reviewer="r", taxonomy=TAX, now=NOW
+    )
+    assert len(res.added) == 1 and res.added[0].candidate_id == c.id
+    res = import_labels(
+        store,
+        [{"candidate_key": f"{sha}:1-2", "decision": "approve"}],
+        reviewer="r",
+        taxonomy=TAX,
+        now=NOW,
+    )
+    assert res.added == [] and "no candidate matches" in res.errors[0]["error"]

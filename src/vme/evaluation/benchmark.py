@@ -55,7 +55,9 @@ def run_benchmark(
         "reviewer_agreement": _mean(
             [r.reviewer_agreement for r in rows if r.reviewer_agreement is not None]
         ),
-        "meets_exit_size": len(rows) >= MIN_LABELED_FOR_EXIT,
+        "n_provisional": sum(r.provisional for r in rows),
+        "provisional_share": sum(r.provisional for r in rows) / len(rows),
+        "meets_exit_size": sum(not r.provisional for r in rows) >= MIN_LABELED_FOR_EXIT,
     }
     for k in ks:
         metrics[f"precision_at_{k}"] = precision_at_k(relevant, k)

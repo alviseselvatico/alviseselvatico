@@ -116,7 +116,16 @@ the ranking run they were scored in. `bench run` persists precision@k, NDCG@k, p
 agreement and score calibration for one batch together with scoring, weights and prompt
 versions; `bench compare` flags any drop beyond a tolerance. A committed fixture pins the
 Viral Score formula and weights so a change fails the test suite instead of passing
-unnoticed. The Phase 1 entry condition (3 authorized sources, 3 hours, D017) still holds.
+unnoticed. The Phase 1 entry condition (3 authorized sources, 3 hours, D017) still holds
+for the human golden set.
+
+A provisional bootstrap exists (D028, D029): 99 candidates from three public-domain
+macro/economics sources (66 min), labeled blind by the assistant session and flagged
+`provisional`, with per-source benchmarks and the cost report under
+`fixtures/golden/bootstrap_v1/`. Against those labels the funnel approves 17 of its 20
+strong-tier finalists and orders 70-80% of human-ordered pairs the same way; the full run
+cost $1.10 in 119 calls. Provisional labels yield to the first human label on each
+candidate, so the operator can confirm or overturn them one by one.
 
 ## 6. Not built
 

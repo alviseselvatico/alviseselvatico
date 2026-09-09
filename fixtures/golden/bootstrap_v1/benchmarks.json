@@ -1,0 +1,261 @@
+[
+{
+  "id": "bch_80ca632f1378f76b",
+  "ranking_batch_id": "rkb_e5ff07212f97c7b9",
+  "transcript_id": "trn_5d824c0a5bf89e4e",
+  "scoring_version": "viral_score_v0.1.0",
+  "weights_version": "viral_v0.1.0",
+  "prompt_version": "1.0.0",
+  "model_alias": "strong",
+  "n_labeled": 20,
+  "metrics": {
+    "n_labeled": 20,
+    "n_approved": 12,
+    "approval_rate": 0.6,
+    "pairwise_agreement": 0.7299270072992701,
+    "calibration": [
+      {
+        "bucket": 0,
+        "score_from": 0.0,
+        "score_to": 20.0,
+        "n": 0,
+        "approval_rate": 0.0
+      },
+      {
+        "bucket": 1,
+        "score_from": 20.0,
+        "score_to": 40.0,
+        "n": 9,
+        "approval_rate": 0.3333333333333333
+      },
+      {
+        "bucket": 2,
+        "score_from": 40.0,
+        "score_to": 60.0,
+        "n": 11,
+        "approval_rate": 0.8181818181818182
+      },
+      {
+        "bucket": 3,
+        "score_from": 60.0,
+        "score_to": 80.0,
+        "n": 0,
+        "approval_rate": 0.0
+      },
+      {
+        "bucket": 4,
+        "score_from": 80.0,
+        "score_to": 100.0,
+        "n": 0,
+        "approval_rate": 0.0
+      }
+    ],
+    "reviewer_agreement": null,
+    "n_provisional": 20,
+    "provisional_share": 1.0,
+    "meets_exit_size": false,
+    "precision_at_3": 0.6666666666666666,
+    "ndcg_at_3": 0.7653606369886218,
+    "precision_at_5": 0.8,
+    "ndcg_at_5": 0.7379954215781759,
+    "precision_at_10": 0.8,
+    "ndcg_at_10": 0.7577053772683913
+  },
+  "created_at": "2026-09-09T15:29:17.758326Z"
+}
+,
+{
+  "id": "bch_a0a6be1a893f0c61",
+  "ranking_batch_id": "rkb_727d6065a119eda8",
+  "transcript_id": "trn_4ab00c31d9ecb6e2",
+  "scoring_version": "viral_score_v0.1.0",
+  "weights_version": "viral_v0.1.0",
+  "prompt_version": "1.0.0",
+  "model_alias": "strong",
+  "n_labeled": 11,
+  "metrics": {
+    "n_labeled": 11,
+    "n_approved": 6,
+    "approval_rate": 0.5454545454545454,
+    "pairwise_agreement": 0.8048780487804879,
+    "calibration": [
+      {
+        "bucket": 0,
+        "score_from": 0.0,
+        "score_to": 20.0,
+        "n": 2,
+        "approval_rate": 0.0
+      },
+      {
+        "bucket": 1,
+        "score_from": 20.0,
+        "score_to": 40.0,
+        "n": 6,
+        "approval_rate": 0.5
+      },
+      {
+        "bucket": 2,
+        "score_from": 40.0,
+        "score_to": 60.0,
+        "n": 3,
+        "approval_rate": 1.0
+      },
+      {
+        "bucket": 3,
+        "score_from": 60.0,
+        "score_to": 80.0,
+        "n": 0,
+        "approval_rate": 0.0
+      },
+      {
+        "bucket": 4,
+        "score_from": 80.0,
+        "score_to": 100.0,
+        "n": 0,
+        "approval_rate": 0.0
+      }
+    ],
+    "reviewer_agreement": null,
+    "n_provisional": 11,
+    "provisional_share": 1.0,
+    "meets_exit_size": false,
+    "precision_at_3": 1.0,
+    "ndcg_at_3": 0.5248827916050821,
+    "precision_at_5": 1.0,
+    "ndcg_at_5": 0.7415585676292382,
+    "precision_at_10": 0.6,
+    "ndcg_at_10": 0.8068437533082709
+  },
+  "created_at": "2026-09-09T15:29:18.178849Z"
+}
+,
+{
+  "id": "bch_b6f038bc3aeb9403",
+  "ranking_batch_id": "rkb_941af004ed7f2e15",
+  "transcript_id": "trn_12744ce6c733ffb3",
+  "scoring_version": "viral_score_v0.1.0",
+  "weights_version": "viral_v0.1.0",
+  "prompt_version": "1.0.0",
+  "model_alias": "strong",
+  "n_labeled": 33,
+  "metrics": {
+    "n_labeled": 33,
+    "n_approved": 17,
+    "approval_rate": 0.5151515151515151,
+    "pairwise_agreement": 0.7932960893854749,
+    "calibration": [
+      {
+        "bucket": 0,
+        "score_from": 0.0,
+        "score_to": 20.0,
+        "n": 2,
+        "approval_rate": 0.0
+      },
+      {
+        "bucket": 1,
+        "score_from": 20.0,
+        "score_to": 40.0,
+        "n": 13,
+        "approval_rate": 0.38461538461538464
+      },
+      {
+        "bucket": 2,
+        "score_from": 40.0,
+        "score_to": 60.0,
+        "n": 18,
+        "approval_rate": 0.6666666666666666
+      },
+      {
+        "bucket": 3,
+        "score_from": 60.0,
+        "score_to": 80.0,
+        "n": 0,
+        "approval_rate": 0.0
+      },
+      {
+        "bucket": 4,
+        "score_from": 80.0,
+        "score_to": 100.0,
+        "n": 0,
+        "approval_rate": 0.0
+      }
+    ],
+    "reviewer_agreement": null,
+    "n_provisional": 33,
+    "provisional_share": 1.0,
+    "meets_exit_size": false,
+    "precision_at_3": 1.0,
+    "ndcg_at_3": 0.7653606369886218,
+    "precision_at_5": 1.0,
+    "ndcg_at_5": 0.7866848715257447,
+    "precision_at_10": 0.9,
+    "ndcg_at_10": 0.7528698081596253
+  },
+  "created_at": "2026-09-09T15:29:18.584258Z"
+}
+,
+{
+  "id": "bch_52bd483079f9365f",
+  "ranking_batch_id": "rkb_dc3d020bfad7a232",
+  "transcript_id": "trn_a77666eeaef21247",
+  "scoring_version": "viral_score_v0.1.0",
+  "weights_version": "viral_v0.1.0",
+  "prompt_version": "1.0.0",
+  "model_alias": "strong",
+  "n_labeled": 35,
+  "metrics": {
+    "n_labeled": 35,
+    "n_approved": 21,
+    "approval_rate": 0.6,
+    "pairwise_agreement": 0.6983173076923077,
+    "calibration": [
+      {
+        "bucket": 0,
+        "score_from": 0.0,
+        "score_to": 20.0,
+        "n": 0,
+        "approval_rate": 0.0
+      },
+      {
+        "bucket": 1,
+        "score_from": 20.0,
+        "score_to": 40.0,
+        "n": 12,
+        "approval_rate": 0.3333333333333333
+      },
+      {
+        "bucket": 2,
+        "score_from": 40.0,
+        "score_to": 60.0,
+        "n": 23,
+        "approval_rate": 0.7391304347826086
+      },
+      {
+        "bucket": 3,
+        "score_from": 60.0,
+        "score_to": 80.0,
+        "n": 0,
+        "approval_rate": 0.0
+      },
+      {
+        "bucket": 4,
+        "score_from": 80.0,
+        "score_to": 100.0,
+        "n": 0,
+        "approval_rate": 0.0
+      }
+    ],
+    "reviewer_agreement": null,
+    "n_provisional": 35,
+    "provisional_share": 1.0,
+    "meets_exit_size": false,
+    "precision_at_3": 0.6666666666666666,
+    "ndcg_at_3": 0.625704968030342,
+    "precision_at_5": 0.6,
+    "ndcg_at_5": 0.5495925069266258,
+    "precision_at_10": 0.8,
+    "ndcg_at_10": 0.6563855316029856
+  },
+  "created_at": "2026-09-09T15:29:18.990906Z"
+}
+]

@@ -92,6 +92,8 @@ uv run vme report cost                               # spesa per stadio dai toke
 uv run vme label add --candidate <id> --decision approve --hook 4 --expected high --boundary-correct   # golden set (Phase 1)
 uv run vme label add --candidate <id> --decision reject --reason weak_hook,needs_context
 uv run vme label taxonomy                            # codici di rifiuto ammessi (reasons_v1)
+uv run vme candidate export --out artifacts/blind.jsonl   # candidati senza punteggi, per etichettare alla cieca
+uv run vme label import --file labels.jsonl [--provisional]   # etichette in blocco (per candidate_id o candidate_key)
 uv run vme golden export --out artifacts/golden.jsonl
 uv run vme bench run --batch <batch_id>              # precision@k, NDCG, pairwise agreement contro le etichette
 uv run vme bench compare <baseline_id> <candidate_id>   # delta e regressioni quando cambiano prompt o pesi
