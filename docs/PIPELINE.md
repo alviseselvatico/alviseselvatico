@@ -94,6 +94,12 @@ The funnel behaves as intended: cheap-tier spend grows with source length while 
 spend is capped by `finalists_k`. A one-hour source implies roughly 100 candidates, about
 $0.36 of screening plus a fixed $0.17 of finalist scoring; drafts stay $0.089 each.
 
+Automated fact check (D030), measured on two claims with Opus 5 and `web_search_20260209`
+(3 searches each): retrieval $0.30 per claim, evaluation $0.03 per claim. A draft with a
+dozen claims therefore costs about $4 to check on the strong tier. Set
+`VME_EVIDENCE_ALIAS=cheap` and `VME_EVIDENCE_SEARCH_TOOL=web_search_20250305` to retrieve
+on Haiku 4.5 at a fraction of that; the evaluator itself always runs on the strong tier.
+
 Local stages cost no API money but do cost wall-clock: transcription with `small` on CPU
 ran at roughly half real time (8 minutes for 16.5 minutes of audio), and one render takes
 about 40 seconds at the `medium` preset.
