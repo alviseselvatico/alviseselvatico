@@ -1,0 +1,91 @@
+project:
+  codename: "Vertical Media Engine"
+  short_name: "VME"
+  status: "pre-MVP"
+  date: "2026-09-09"
+  owner_goal: "Build a lean, highly automated short-form media engine and validate predictive content selection before scaling."
+  primary_language:
+    product_content: "English-first"
+    code_and_docs: "English"
+    operator_notes: "Italian allowed"
+
+core_thesis:
+  - "Short-form ad revenue alone is not the business model."
+  - "Distribution, proprietary performance data, B2B creator services, sponsorship and audience ownership are the long-term monetization layers."
+  - "The defensible asset is the dataset mapping content features to audience response."
+  - "Human approval remains mandatory until rights, factual accuracy and quality gates are proven reliable."
+
+mvp:
+  input:
+    - "one authorized/local media file OR explicitly approved source URL"
+  output:
+    - "transcript with timestamps"
+    - "ranked candidate segments"
+    - "3-5 editorially transformed short-form drafts"
+    - "9:16 rendered MP4 drafts"
+    - "review metadata stored in database or local structured store"
+  excludes:
+    - "automatic public publishing"
+    - "multi-tenant SaaS"
+    - "billing"
+    - "custom-trained foundation model"
+    - "mass web scraping"
+    - "fully autonomous rights decisions"
+
+preferred_stack:
+  backend: "Python 3.12+"
+  api: "FastAPI when an API becomes necessary"
+  database: "PostgreSQL; SQLite is allowed for Phase 0"
+  queue: "Start synchronous/local; add Redis + worker queue only when needed"
+  media: "FFmpeg + ffprobe"
+  transcription: "provider abstraction; start with one reliable speech-to-text provider"
+  llm: "provider abstraction; strong model only for top candidates"
+  dashboard: "No dashboard in Phase 0; Next.js/React allowed later"
+  storage: "Local filesystem in Phase 0; object storage later"
+  deployment: "Docker after local pipeline is stable"
+  analytics: "First-party event tables first; PostHog later for product analytics"
+  monitoring: "Structured logs first; Sentry after staging"
+
+hard_rules:
+  - "Never commit secrets."
+  - "Never publish automatically in Phase 0-2."
+  - "Never ingest a source unless a source rights policy permits the requested action."
+  - "Public availability is not a rights basis."
+  - "No arbitrary 'X seconds is fair use' rule."
+  - "Any factual claim added by the system must be traceable to evidence."
+  - "A quote/opinion must never be rewritten as company guidance or verified fact."
+  - "Every pipeline step must be reproducible from stored inputs, configuration and prompt version."
+  - "Do not build a UI before the CLI/local pipeline works end-to-end."
+  - "Do not introduce distributed infrastructure until a measured bottleneck requires it."
+  - "Prefer deterministic code over LLM calls when deterministic code can solve the task."
+
+quality_gates:
+  phase_0:
+    - "Process one local/authorized source end-to-end."
+    - "Generate timestamped transcript."
+    - "Generate at least 5 ranked candidates."
+    - "Render at least 3 playable vertical MP4 drafts."
+    - "Persist all scores, prompts and review decisions."
+  phase_1:
+    - "Create a golden evaluation set of at least 50 candidate segments."
+    - "Measure ranking agreement against human labels."
+    - "No rights-blocked source can reach render."
+    - "No unverified generated factual claim can reach approved state."
+  phase_2:
+    - "Operator can review candidates rapidly from a local/simple interface."
+    - "Publishing is explicit human action with audit log."
+    - "Analytics are collected and mapped back to exact content/prompt/version."
+  phase_3:
+    - "At least one repeatable format/channel demonstrates statistically meaningful performance separation from baseline."
+    - "Only then increase automation and channel count."
+
+north_star:
+  primary: "Predictive lift: ability to rank clips that outperform a defined baseline."
+  secondary:
+    - "human approval rate"
+    - "3-second hold / viewed-vs-swiped where available"
+    - "completion rate"
+    - "share rate"
+    - "follow conversion"
+    - "cost per approved short"
+    - "time from source ingestion to approved draft"

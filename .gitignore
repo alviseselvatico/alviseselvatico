@@ -1,0 +1,32 @@
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+artifacts/
+*.mp4
+*.mov
+*.mkv
+*.wav
+*.mp3
+# The only committed media: one short operator-owned speech fixture (D016)
+!fixtures/speech/*.wav
+
+*.sqlite3
+*.db
+
+.DS_Store
+.idea/
+.vscode/
+
+# Secrets / credentials
+credentials*.json
+token*.json
+secrets/
