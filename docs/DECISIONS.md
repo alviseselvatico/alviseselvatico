@@ -73,3 +73,11 @@ Reason: 50-100 labeled candidates cannot come from one file; authorized supply i
 ## 2026-09-09 — D018 — Phase 0 media registration references the operator's file in place
 Decision: `media register` stores the resolved absolute path of the local file plus its SHA-256; it does not copy the file into `artifacts/source/`. Logs show only the file name unless the path is inside the artifacts directory. A permissive `basis_type` additionally requires a non-empty `basis_reference` at the model level (SOURCES.md rule: no evidence = `UNKNOWN`).
 Reason: Phase 0 works on one local authorized file; duplicating gigabytes buys nothing, and the fingerprint detects a changed or moved file at the next step. Copying/object keys arrive with object storage (ARCHITECTURE §9).
+
+## 2026-09-09 — D019 — Third-party speech fixtures are fetched, pinned and never committed
+Decision: besides the operator-owned clip of D016, tests may use public-domain speech samples downloaded by `scripts/fetch_speech_fixtures.py` into git-ignored `fixtures/speech/external/`. Each manifest entry pins URL, SHA-256 and rights evidence. Tests skip with an explicit reason when no fixture is present. Public-domain status is evidence for *test* use only; registering such a file as a VME source still needs an operator-confirmed `RightsPolicy`.
+Reason: no operator recording exists yet; CLAUDE.md forbids committing downloaded third-party content; a pinned hash keeps transcription tests reproducible.
+
+## 2026-09-09 — D020 — Transcription and segmentation are gated on `ingest`
+Decision: `transcribe` and `segment` re-evaluate the rights gate with action `ingest` (the policy may have expired since registration) and require the file to still match its registered SHA-256. `clip` is checked when a candidate is extracted/rendered, `render_transform` when editorial content is applied, `publish` never before Phase 3.
+Reason: transcribing and finding boundaries produce internal analysis artifacts, not clips; tying them to `ingest` keeps the four flags meaningful and avoids blocking analysis of sources whose clip rights are still under review.

@@ -61,4 +61,41 @@ MIGRATIONS: tuple[Migration, ...] = (
         CREATE INDEX media_assets_source_idx ON media_assets(source_id);
         """,
     ),
+    Migration(
+        version=2,
+        name="phase0_transcripts_candidates",
+        sql="""
+        CREATE TABLE transcripts (
+            id               TEXT PRIMARY KEY,
+            media_asset_id   TEXT    NOT NULL REFERENCES media_assets(id),
+            kind             TEXT    NOT NULL,
+            derived_from_id  TEXT    REFERENCES transcripts(id),
+            version          INTEGER NOT NULL,
+            provider         TEXT    NOT NULL,
+            provider_version TEXT    NOT NULL,
+            model_alias      TEXT    NOT NULL,
+            language         TEXT,
+            raw_text         TEXT    NOT NULL,
+            segments_json    TEXT    NOT NULL,
+            created_at       TEXT    NOT NULL,
+            UNIQUE (media_asset_id, kind, version)
+        );
+
+        CREATE TABLE candidates (
+            id             TEXT    PRIMARY KEY,
+            transcript_id  TEXT    NOT NULL REFERENCES transcripts(id),
+            start_ms       INTEGER NOT NULL,
+            end_ms         INTEGER NOT NULL,
+            context_before TEXT    NOT NULL,
+            context_after  TEXT    NOT NULL,
+            speaker        TEXT,
+            topic          TEXT,
+            candidate_text TEXT    NOT NULL,
+            created_by     TEXT    NOT NULL,
+            created_at     TEXT    NOT NULL,
+            CHECK (end_ms > start_ms)
+        );
+        CREATE INDEX candidates_transcript_idx ON candidates(transcript_id, start_ms);
+        """,
+    ),
 )

@@ -1,5 +1,5 @@
-"""``vme`` CLI: ``source add|show|list``, ``policy add|show``, ``media register|show|list``,
-``db migrate``.
+"""``vme`` CLI: ``source``, ``policy``, ``media``, ``transcribe``, ``transcript``,
+``segment``, ``candidate``, ``db migrate``.
 
 Every invocation gets a correlation id, logs JSON to stderr and prints one JSON document
 to stdout. Exit codes: 0 ok, 1 error, 2 usage, 3 blocked by the rights gate.
@@ -24,8 +24,12 @@ from vme.ingestion.probe import ProbeError
 from vme.ingestion.register import IngestionError, register_local_media
 from vme.logs import configure_logging, display_path, get_logger, new_correlation_id
 from vme.rights.gate import Action, RightsBlockedError, check
+from vme.segmentation.segmenter import SegmentationConfig
+from vme.segmentation.service import segment_and_store
 from vme.storage.db import Store, applied_versions, migrate
 from vme.storage.repositories import DuplicateRecordError, NotFoundError
+from vme.transcription.factory import build_transcriber
+from vme.transcription.service import transcribe_media
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -167,6 +171,48 @@ def cmd_media_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
     return store.media.list(args.source)
 
 
+def cmd_transcribe(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    stt = build_transcriber(settings)
+    transcript = transcribe_media(store, args.media, stt, artifacts_dir=settings.artifacts_dir)
+    return _transcript_view(transcript, full=args.full)
+
+
+def _transcript_view(transcript: Any, *, full: bool) -> Any:
+    if full:
+        return transcript
+    data = transcript.model_dump(mode="json", exclude={"segments"})
+    data["segments"] = len(transcript.segments)
+    data["words"] = len(transcript.words())
+    data["duration_ms"] = transcript.duration_ms
+    return data
+
+
+def cmd_transcript_show(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return _transcript_view(store.transcripts.get(args.id), full=args.full)
+
+
+def cmd_transcript_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return [_transcript_view(t, full=False) for t in store.transcripts.list(args.media)]
+
+
+def cmd_segment(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    kwargs: dict[str, Any] = {}
+    for name in ("min_ms", "target_ms", "max_ms", "sentence_pause_ms", "hard_pause_ms"):
+        value = getattr(args, name)
+        if value is not None:
+            kwargs[name] = value
+    config = SegmentationConfig(**kwargs)
+    return segment_and_store(store, args.transcript, config)
+
+
+def cmd_candidate_show(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return store.candidates.get(args.id)
+
+
+def cmd_candidate_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return store.candidates.list(args.transcript, created_by=args.created_by)
+
+
 Handler = Callable[[argparse.Namespace, Store, Settings], Any]
 
 
@@ -244,6 +290,39 @@ def build_parser() -> argparse.ArgumentParser:
     p = media.add_parser("list", help="list media assets")
     p.add_argument("--source", help="filter by source id")
     p.set_defaults(handler=cmd_media_list)
+
+    # transcribe / transcript
+    p = sub.add_parser("transcribe", help="transcribe a registered media asset (rights-gated)")
+    p.add_argument("--media", required=True, help="media asset id")
+    p.add_argument("--full", action="store_true", help="include all segments and words")
+    p.set_defaults(group="transcribe", command="run", handler=cmd_transcribe)
+    transcript = sub.add_parser("transcript", help="transcripts").add_subparsers(
+        dest="command", required=True
+    )
+    p = transcript.add_parser("show", help="show a transcript")
+    p.add_argument("id")
+    p.add_argument("--full", action="store_true", help="include all segments and words")
+    p.set_defaults(handler=cmd_transcript_show)
+    p = transcript.add_parser("list", help="list transcripts")
+    p.add_argument("--media", help="filter by media asset id")
+    p.set_defaults(handler=cmd_transcript_list)
+
+    # segment / candidate
+    p = sub.add_parser("segment", help="split a transcript into candidate spans (deterministic)")
+    p.add_argument("--transcript", required=True, help="transcript id")
+    for name in ("min-ms", "target-ms", "max-ms", "sentence-pause-ms", "hard-pause-ms"):
+        p.add_argument(f"--{name}", type=int, default=None)
+    p.set_defaults(group="segment", command="run", handler=cmd_segment)
+    candidate = sub.add_parser("candidate", help="candidate spans").add_subparsers(
+        dest="command", required=True
+    )
+    p = candidate.add_parser("show", help="show a candidate")
+    p.add_argument("id")
+    p.set_defaults(handler=cmd_candidate_show)
+    p = candidate.add_parser("list", help="list candidates of a transcript")
+    p.add_argument("--transcript", required=True)
+    p.add_argument("--created-by", help="filter, e.g. segmenter:v0.1.0")
+    p.set_defaults(handler=cmd_candidate_list)
     return parser
 
 

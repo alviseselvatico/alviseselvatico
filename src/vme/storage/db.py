@@ -12,9 +12,11 @@ from vme.domain.models import utc_now
 from vme.logs import get_logger
 from vme.storage.migrations import MIGRATIONS
 from vme.storage.repositories import (
+    CandidateRepository,
     MediaAssetRepository,
     RightsPolicyRepository,
     SourceRepository,
+    TranscriptRepository,
 )
 
 log = get_logger("storage")
@@ -87,6 +89,8 @@ class Store:
         self.sources = SourceRepository(conn)
         self.policies = RightsPolicyRepository(conn)
         self.media = MediaAssetRepository(conn)
+        self.transcripts = TranscriptRepository(conn)
+        self.candidates = CandidateRepository(conn)
 
     @classmethod
     def open(cls, db_path: Path | str) -> Store:

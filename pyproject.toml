@@ -6,6 +6,7 @@ readme = "README_IT.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
 dependencies = [
+    "faster-whisper>=1.1",
     "pydantic>=2.11",
     "pydantic-settings>=2.10",
 ]
@@ -57,6 +58,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S603", "S607", "ANN", "T20"]
 "src/vme/cli/**" = ["T20"]
+"scripts/**" = ["T20"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -77,3 +79,7 @@ warn_required_dynamic_aliases = true
 testpaths = ["tests"]
 addopts = "-q -ra"
 filterwarnings = ["error"]
+
+[[tool.mypy.overrides]]
+module = ["faster_whisper", "faster_whisper.*"]
+ignore_missing_imports = true

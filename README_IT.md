@@ -71,7 +71,16 @@ uv run vme policy add --source S001 --basis owned --reference "docs/SOURCES.md#S
     --can-ingest --can-extract-clip --can-transform
 uv run vme media register --source S001 /path/al/file.mp4
 uv run vme source show S001
+uv run vme transcribe --media <media_id>          # faster-whisper locale (D011), transcript RAW immutabile
+uv run vme transcript show <transcript_id> --full  # segmenti e parole con timestamp
+uv run vme segment --transcript <transcript_id>    # candidati deterministici (segmenter:v0.1.0)
+uv run vme candidate list --transcript <transcript_id>
 ```
+
+Fixture vocali per i test di trascrizione: vedi `fixtures/speech/README.md`
+(`uv run python scripts/fetch_speech_fixtures.py` scarica sample di pubblico dominio con hash
+verificato in `fixtures/speech/external/`, mai committati — D019). Il primo `transcribe` scarica
+il modello whisper della dimensione configurata (`VME_STT_MODEL_SIZE`) nella cache di Hugging Face.
 
 Exit code: `0` ok, `1` errore, `2` uso errato, `3` bloccato dal rights gate. Lo stdout è sempre un documento JSON; i log strutturati (JSON per riga, con `correlation_id`) vanno su stderr.
 

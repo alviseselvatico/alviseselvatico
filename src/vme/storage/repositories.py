@@ -6,7 +6,20 @@ import sqlite3
 from datetime import datetime
 from typing import Any
 
-from vme.domain.models import MediaAsset, RightsPolicy, Source, SourceStatus
+from pydantic import TypeAdapter
+
+from vme.domain.models import (
+    Candidate,
+    MediaAsset,
+    RightsPolicy,
+    Source,
+    SourceStatus,
+    Transcript,
+    TranscriptKind,
+    TranscriptSegment,
+)
+
+_SEGMENTS = TypeAdapter(list[TranscriptSegment])
 
 
 class NotFoundError(LookupError):
@@ -234,6 +247,162 @@ class MediaAssetRepository:
             audio_codec=row["audio_codec"],
             video_codec=row["video_codec"],
             ingested_at=_dt(row["ingested_at"]) or _fail("ingested_at"),
+        )
+
+
+class TranscriptRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def next_version(self, media_asset_id: str, kind: TranscriptKind) -> int:
+        row = self._conn.execute(
+            "SELECT COALESCE(MAX(version), 0) FROM transcripts "
+            "WHERE media_asset_id = ? AND kind = ?",
+            (media_asset_id, kind.value),
+        ).fetchone()
+        return int(row[0]) + 1
+
+    def add(self, transcript: Transcript) -> Transcript:
+        try:
+            self._conn.execute(
+                """
+                INSERT INTO transcripts (
+                    id, media_asset_id, kind, derived_from_id, version, provider,
+                    provider_version, model_alias, language, raw_text, segments_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    transcript.id,
+                    transcript.media_asset_id,
+                    transcript.kind.value,
+                    transcript.derived_from_id,
+                    transcript.version,
+                    transcript.provider,
+                    transcript.provider_version,
+                    transcript.model_alias,
+                    transcript.language,
+                    transcript.raw_text,
+                    _SEGMENTS.dump_json(transcript.segments).decode("utf-8"),
+                    _iso(transcript.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = (
+                f"transcript {transcript.id!r} already exists, version "
+                f"{transcript.version} taken, or media/parent reference missing"
+            )
+            raise DuplicateRecordError(msg) from exc
+        return transcript
+
+    def get(self, transcript_id: str) -> Transcript:
+        row = self._conn.execute(
+            "SELECT * FROM transcripts WHERE id = ?", (transcript_id,)
+        ).fetchone()
+        if row is None:
+            msg = f"transcript {transcript_id!r} not found"
+            raise NotFoundError(msg)
+        return self._to_model(row)
+
+    def list(self, media_asset_id: str | None = None) -> list[Transcript]:
+        if media_asset_id is None:
+            rows = self._conn.execute("SELECT * FROM transcripts ORDER BY created_at, id")
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM transcripts WHERE media_asset_id = ? ORDER BY kind, version",
+                (media_asset_id,),
+            )
+        return [self._to_model(r) for r in rows.fetchall()]
+
+    @staticmethod
+    def _to_model(row: sqlite3.Row) -> Transcript:
+        return Transcript(
+            id=row["id"],
+            media_asset_id=row["media_asset_id"],
+            kind=row["kind"],
+            derived_from_id=row["derived_from_id"],
+            version=row["version"],
+            provider=row["provider"],
+            provider_version=row["provider_version"],
+            model_alias=row["model_alias"],
+            language=row["language"],
+            raw_text=row["raw_text"],
+            segments=_SEGMENTS.validate_json(row["segments_json"]),
+            created_at=_dt(row["created_at"]) or _fail("created_at"),
+        )
+
+
+class CandidateRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def add_many(self, candidates: list[Candidate]) -> list[Candidate]:
+        try:
+            self._conn.executemany(
+                """
+                INSERT INTO candidates (
+                    id, transcript_id, start_ms, end_ms, context_before, context_after,
+                    speaker, topic, candidate_text, created_by, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        c.id,
+                        c.transcript_id,
+                        c.start_ms,
+                        c.end_ms,
+                        c.context_before,
+                        c.context_after,
+                        c.speaker,
+                        c.topic,
+                        c.candidate_text,
+                        c.created_by,
+                        _iso(c.created_at),
+                    )
+                    for c in candidates
+                ],
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = "candidate id already exists or transcript reference missing"
+            raise DuplicateRecordError(msg) from exc
+        return candidates
+
+    def get(self, candidate_id: str) -> Candidate:
+        row = self._conn.execute(
+            "SELECT * FROM candidates WHERE id = ?", (candidate_id,)
+        ).fetchone()
+        if row is None:
+            msg = f"candidate {candidate_id!r} not found"
+            raise NotFoundError(msg)
+        return self._to_model(row)
+
+    def list(self, transcript_id: str, created_by: str | None = None) -> list[Candidate]:
+        if created_by is None:
+            rows = self._conn.execute(
+                "SELECT * FROM candidates WHERE transcript_id = ? ORDER BY start_ms, id",
+                (transcript_id,),
+            )
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM candidates WHERE transcript_id = ? AND created_by = ? "
+                "ORDER BY start_ms, id",
+                (transcript_id, created_by),
+            )
+        return [self._to_model(r) for r in rows.fetchall()]
+
+    @staticmethod
+    def _to_model(row: sqlite3.Row) -> Candidate:
+        return Candidate(
+            id=row["id"],
+            transcript_id=row["transcript_id"],
+            start_ms=row["start_ms"],
+            end_ms=row["end_ms"],
+            context_before=row["context_before"],
+            context_after=row["context_after"],
+            speaker=row["speaker"],
+            topic=row["topic"],
+            candidate_text=row["candidate_text"],
+            created_by=row["created_by"],
+            created_at=_dt(row["created_at"]) or _fail("created_at"),
         )
 
 

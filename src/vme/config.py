@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     stt_model_size: str = Field(default="small", validation_alias="VME_STT_MODEL_SIZE")
     stt_device: str = Field(default="cpu", validation_alias="VME_STT_DEVICE")
     stt_compute_type: str = Field(default="int8", validation_alias="VME_STT_COMPUTE_TYPE")
+    stt_language: str = Field(default="", validation_alias="VME_STT_LANGUAGE")
+    stt_beam_size: int = Field(default=5, validation_alias="VME_STT_BEAM_SIZE", ge=1, le=20)
     transcription_api_key: SecretStr = Field(
         default=SecretStr(""), validation_alias="TRANSCRIPTION_API_KEY"
     )

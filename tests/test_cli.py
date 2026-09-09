@@ -10,7 +10,9 @@ from typing import Any
 import pytest
 
 from tests.conftest import requires_ffmpeg
+from tests.fake_stt import FakeSpeechToText
 from vme.cli.main import EXIT_BLOCKED, EXIT_ERROR, EXIT_OK, EXIT_USAGE, run
+from vme.storage.migrations import MIGRATIONS
 
 
 def _vme(*argv: str) -> tuple[int, Any, list[dict[str, Any]]]:
@@ -36,7 +38,11 @@ def test_usage_error_exit_code() -> None:
 
 def test_db_migrate(db: Path) -> None:
     code, payload, logs = _vme("db", "migrate")
-    assert code == EXIT_OK and payload == {"applied": [], "current": [1]}  # Store.open migrated
+    versions = [m.version for m in MIGRATIONS]
+    assert code == EXIT_OK and payload == {
+        "applied": [],
+        "current": versions,
+    }  # Store.open migrated
     assert logs[0]["event"] == "cli_start" and logs[-1]["status"] == "success"
     assert all(log["correlation_id"] == logs[0]["correlation_id"] for log in logs)
     assert db.is_file()
@@ -124,3 +130,58 @@ def test_expired_policy_blocks_registration(db: Path, tmp_path: Path) -> None:
 def test_unknown_source_is_an_error(db: Path) -> None:
     code, payload, _ = _vme("source", "show", "ghost")
     assert code == EXIT_ERROR and payload["error"] == "NotFoundError"
+
+
+@requires_ffmpeg
+def test_transcribe_and_segment_pipeline(
+    db: Path, audio_wav: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import vme.cli.main as cli
+
+    monkeypatch.setattr(cli, "build_transcriber", lambda _settings: FakeSpeechToText(pause_ms=300))
+    _vme("source", "add", "--id", "S001", "--uri", str(audio_wav))
+    _vme(
+        "policy", "add", "--source", "S001", "--basis", "owned", "--reference", "r",
+        "--can-ingest", "--can-extract-clip", "--can-transform",
+    )  # fmt: skip
+    code, asset, _ = _vme("media", "register", "--source", "S001", str(audio_wav))
+    assert code == EXIT_OK
+
+    code, summary, logs = _vme("transcribe", "--media", asset["id"])
+    assert code == EXIT_OK and summary["kind"] == "RAW" and summary["version"] == 1
+    assert summary["provider"] == "fake" and summary["segments"] == 8 and summary["words"] > 8
+    assert any(log["event"] == "transcript_created" for log in logs)
+
+    code, full, _ = _vme("transcript", "show", summary["id"], "--full")
+    assert code == EXIT_OK and len(full["segments"]) == 8 and full["segments"][0]["words"]
+    code, listing, _ = _vme("transcript", "list", "--media", asset["id"])
+    assert code == EXIT_OK and [t["id"] for t in listing] == [summary["id"]]
+
+    code, cands, logs = _vme(
+        "segment", "--transcript", summary["id"], "--min-ms", "3000", "--target-ms", "6000",
+        "--max-ms", "9000",
+    )  # fmt: skip
+    assert code == EXIT_OK and len(cands) >= 2
+    assert all(c["created_by"] == "segmenter:v0.1.0" for c in cands)
+    assert logs[-2]["event"] == "candidates_created"
+    code, again, _ = _vme("segment", "--transcript", summary["id"], "--min-ms", "3000",
+                          "--target-ms", "6000", "--max-ms", "9000")  # fmt: skip
+    assert code == EXIT_ERROR and again["error"] == "DuplicateRecordError"
+    code, listed, _ = _vme("candidate", "list", "--transcript", summary["id"])
+    assert code == EXIT_OK and listed == cands
+    code, one, _ = _vme("candidate", "show", cands[0]["id"])
+    assert code == EXIT_OK and one == cands[0]
+
+    # invalid segmenter config is a visible error, not a crash
+    code, bad, _ = _vme(
+        "segment", "--transcript", summary["id"], "--min-ms", "9", "--target-ms", "5"
+    )
+    assert code == EXIT_ERROR and bad["error"] == "ValueError"
+
+
+def test_transcribe_unknown_media_and_unsupported_provider(
+    db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("VME_STT_PROVIDER", "nope")
+    code, payload, _ = _vme("transcribe", "--media", "ghost")
+    assert code == EXIT_ERROR and payload["error"] == "TranscriptionError"

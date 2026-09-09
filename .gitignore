@@ -17,7 +17,9 @@ artifacts/
 *.wav
 *.mp3
 # The only committed media: one short operator-owned speech fixture (D016)
-!fixtures/speech/*.wav
+!fixtures/speech/sample_en.wav
+# Downloaded third-party fixtures (D019): never committed
+fixtures/speech/external/
 
 *.sqlite3
 *.db

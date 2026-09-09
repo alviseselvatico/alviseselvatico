@@ -195,3 +195,115 @@ class MediaAsset(_Entity):
     def _aware(cls, value: datetime) -> datetime:
         _require_aware(value, "ingested_at")
         return value
+
+
+# ----------------------------------------------------------------------- transcripts
+
+
+class TranscriptKind(StrEnum):
+    RAW = "RAW"
+    CORRECTED = "CORRECTED"
+    ENRICHED = "ENRICHED"
+
+
+class Word(_Entity):
+    text: str = Field(min_length=1)
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(ge=0)
+    probability: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> Word:
+        if self.end_ms < self.start_ms:
+            msg = f"word {self.text!r}: end_ms {self.end_ms} < start_ms {self.start_ms}"
+            raise ValueError(msg)
+        return self
+
+
+class TranscriptSegment(_Entity):
+    """Provider segment with word-level timestamps where the provider supplies them."""
+
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(ge=0)
+    text: str
+    words: list[Word] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> TranscriptSegment:
+        if self.end_ms < self.start_ms:
+            msg = f"segment: end_ms {self.end_ms} < start_ms {self.start_ms}"
+            raise ValueError(msg)
+        return self
+
+
+class Transcript(_Entity):
+    """``RAW`` transcripts are immutable. Corrections are new rows pointing at the parent."""
+
+    id: str = Field(min_length=1)
+    media_asset_id: str = Field(min_length=1)
+    kind: TranscriptKind
+    derived_from_id: str | None = None
+    version: int = Field(ge=1)
+    provider: str = Field(min_length=1)
+    provider_version: str = Field(min_length=1)
+    model_alias: str = Field(min_length=1)
+    language: str | None = None
+    raw_text: str
+    segments: list[TranscriptSegment]
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "created_at")
+        return value
+
+    @model_validator(mode="after")
+    def _lineage(self) -> Transcript:
+        if self.kind is TranscriptKind.RAW and self.derived_from_id is not None:
+            msg = "RAW transcript cannot have derived_from_id"
+            raise ValueError(msg)
+        if self.kind is not TranscriptKind.RAW and self.derived_from_id is None:
+            msg = f"{self.kind.value} transcript requires derived_from_id"
+            raise ValueError(msg)
+        return self
+
+    @property
+    def duration_ms(self) -> int:
+        return max((s.end_ms for s in self.segments), default=0)
+
+    def words(self) -> list[Word]:
+        return [w for s in self.segments for w in s.words]
+
+
+class Candidate(_Entity):
+    """A semantic span of a transcript proposed for short-form treatment."""
+
+    id: str = Field(min_length=1)
+    transcript_id: str = Field(min_length=1)
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(ge=0)
+    context_before: str = ""
+    context_after: str = ""
+    speaker: str | None = None
+    topic: str | None = None
+    candidate_text: str = Field(min_length=1)
+    created_by: str = Field(min_length=1, description="e.g. 'segmenter:v0.1.0' or 'operator'")
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "created_at")
+        return value
+
+    @model_validator(mode="after")
+    def _ordered(self) -> Candidate:
+        if self.end_ms <= self.start_ms:
+            msg = f"candidate: end_ms {self.end_ms} must be > start_ms {self.start_ms}"
+            raise ValueError(msg)
+        return self
+
+    @property
+    def duration_ms(self) -> int:
+        return self.end_ms - self.start_ms
