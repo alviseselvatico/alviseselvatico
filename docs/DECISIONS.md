@@ -69,3 +69,7 @@ Reason: `.gitignore` blocks media by default; transcription tests need real spee
 ## 2026-09-09 — D017 — Source supply is a Phase 1 entry condition
 Decision: Phase 1 (golden set) cannot start until at least 3 distinct authorized sources (OWNED, EXPLICIT_LICENSE or CREATOR_AUTHORIZATION) totalling >= 3 hours of English speech are registered with evidence. The operator maintains the list in `docs/SOURCES.md`.
 Reason: 50-100 labeled candidates cannot come from one file; authorized supply is the real bottleneck, not code.
+
+## 2026-09-09 — D018 — Phase 0 media registration references the operator's file in place
+Decision: `media register` stores the resolved absolute path of the local file plus its SHA-256; it does not copy the file into `artifacts/source/`. Logs show only the file name unless the path is inside the artifacts directory. A permissive `basis_type` additionally requires a non-empty `basis_reference` at the model level (SOURCES.md rule: no evidence = `UNKNOWN`).
+Reason: Phase 0 works on one local authorized file; duplicating gigabytes buys nothing, and the fingerprint detects a changed or moved file at the next step. Copying/object keys arrive with object storage (ARCHITECTURE §9).

@@ -51,6 +51,30 @@ Non chiedere a Claude di costruire subito l'intero sistema. Il prompt iniziale g
 - `docs/SOURCES.md` — registro delle fonti autorizzate; condizione d'ingresso per la Phase 1.
 - `FIRST_CLAUDE_CODE_PROMPT.md` — prompt da usare nella prima sessione.
 
+## Sviluppo locale (Phase 0, milestone 1)
+
+Prerequisiti: `uv`, Python 3.12+ (installato da `uv` se manca), `ffmpeg`/`ffprobe` nel PATH.
+
+```bash
+uv sync                      # crea .venv e installa il pacchetto `vme` con le dipendenze dev
+uv run ruff check .          # lint
+uv run mypy src              # type check strict
+uv run pytest                # test (le fixture audio/video sono generate con ffmpeg -f lavfi)
+```
+
+Flusso CLI minimo (la registrazione di un file è rifiutata finché la policy non permette `ingest`):
+
+```bash
+cp .env.example .env         # opzionale: default = ./artifacts/vme.sqlite3
+uv run vme source add --id S001 --uri /path/al/file.mp4 --publisher operator
+uv run vme policy add --source S001 --basis owned --reference "docs/SOURCES.md#S001" \
+    --can-ingest --can-extract-clip --can-transform
+uv run vme media register --source S001 /path/al/file.mp4
+uv run vme source show S001
+```
+
+Exit code: `0` ok, `1` errore, `2` uso errato, `3` bloccato dal rights gate. Lo stdout è sempre un documento JSON; i log strutturati (JSON per riga, con `correlation_id`) vanno su stderr.
+
 ## Filosofia di sviluppo
 
 Il progetto deve partire come pipeline locale, osservabile e verificabile. UI, multi-tenant SaaS, pubblicazione automatica e machine learning sofisticato arrivano solo dopo aver dimostrato che la pipeline seleziona e produce clip valide in modo ripetibile.

@@ -46,6 +46,7 @@ Invariants (enforced in the domain model, see D009):
 - `basis_type in {BLOCKED, UNKNOWN}` => `can_ingest = can_extract_clip = can_transform = can_publish = false`;
 - `basis_type == TRANSFORMATIVE_REVIEW_REQUIRED` => `can_publish = false` and `review_required = true`;
 - `expiry_at` in the past => policy evaluates as `BLOCKED` regardless of flags;
+- `basis_type` other than `BLOCKED`/`UNKNOWN` => `basis_reference` is required (evidence; see D018);
 - a `RightsPolicy` that violates an invariant must fail validation, not be silently corrected.
 
 ### MediaAsset
