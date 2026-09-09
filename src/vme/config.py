@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     # --- Rendering (D013)
     render_width: int = Field(default=1080, validation_alias="VME_RENDER_WIDTH", ge=16)
     render_height: int = Field(default=1920, validation_alias="VME_RENDER_HEIGHT", ge=16)
+    render_font: str = Field(default="", validation_alias="VME_RENDER_FONT")
+    render_preset: str = Field(default="medium", validation_alias="VME_RENDER_PRESET")
+    render_crf: int = Field(default=20, validation_alias="VME_RENDER_CRF", ge=0, le=51)
+    render_fps: int = Field(default=30, validation_alias="VME_RENDER_FPS", ge=1, le=120)
+    render_hook_ms: int = Field(default=2500, validation_alias="VME_RENDER_HOOK_MS", ge=500)
+    render_outro_ms: int = Field(default=3000, validation_alias="VME_RENDER_OUTRO_MS", ge=500)
+    render_timeout_s: int = Field(default=900, validation_alias="VME_RENDER_TIMEOUT_S", ge=10)
 
     # --- External binaries (argument lists only, never shell strings)
     ffmpeg_bin: str = Field(default="ffmpeg", validation_alias="VME_FFMPEG_BIN")

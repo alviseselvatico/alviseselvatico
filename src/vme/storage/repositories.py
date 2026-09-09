@@ -11,6 +11,7 @@ from pydantic import TypeAdapter
 
 from vme.domain.models import (
     Candidate,
+    CaptionConfig,
     Claim,
     ClaimStatus,
     DraftStatus,
@@ -18,12 +19,16 @@ from vme.domain.models import (
     ExcerptSpan,
     LlmCall,
     MediaAsset,
+    OverlayConfig,
     RankingBatch,
     RankingRun,
+    Render,
+    RenderPlan,
     ReviewEvent,
     RightsPolicy,
     Source,
     SourceStatus,
+    TimelineItem,
     Transcript,
     TranscriptKind,
     TranscriptSegment,
@@ -34,6 +39,7 @@ _STR_LIST = TypeAdapter(list[str])
 _FLOATS = TypeAdapter(dict[str, float])
 _JSON_OBJ = TypeAdapter(dict[str, Any])
 _SPANS = TypeAdapter(list[ExcerptSpan])
+_TIMELINE = TypeAdapter(list[TimelineItem])
 
 
 class NotFoundError(LookupError):
@@ -841,6 +847,121 @@ class ReviewEventRepository:
             reason_codes=_STR_LIST.validate_json(row["reason_codes_json"]),
             notes=row["notes"],
             reviewer=row["reviewer"],
+            created_at=_dt(row["created_at"]) or _fail("created_at"),
+        )
+
+
+class RenderRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def add_plan(self, plan: RenderPlan) -> RenderPlan:
+        try:
+            self._conn.execute(
+                """
+                INSERT INTO render_plans (
+                    id, editorial_version_id, template_version, width, height, timeline_json,
+                    caption_config_json, overlay_config_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    plan.id,
+                    plan.editorial_version_id,
+                    plan.template_version,
+                    plan.width,
+                    plan.height,
+                    _TIMELINE.dump_json(plan.timeline).decode("utf-8"),
+                    plan.caption_config.model_dump_json(),
+                    plan.overlay_config.model_dump_json(),
+                    _iso(plan.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = f"render plan {plan.id!r} duplicate or editorial version missing"
+            raise DuplicateRecordError(msg) from exc
+        return plan
+
+    def get_plan(self, plan_id: str) -> RenderPlan:
+        row = self._conn.execute("SELECT * FROM render_plans WHERE id = ?", (plan_id,)).fetchone()
+        if row is None:
+            msg = f"render plan {plan_id!r} not found"
+            raise NotFoundError(msg)
+        return self._plan(row)
+
+    def list_plans(self, editorial_version_id: str | None = None) -> list[RenderPlan]:
+        if editorial_version_id is None:
+            rows = self._conn.execute("SELECT * FROM render_plans ORDER BY created_at, rowid")
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM render_plans WHERE editorial_version_id = ? "
+                "ORDER BY created_at, rowid",
+                (editorial_version_id,),
+            )
+        return [self._plan(r) for r in rows.fetchall()]
+
+    def add_render(self, render: Render) -> Render:
+        try:
+            self._conn.execute(
+                """
+                INSERT INTO renders (
+                    id, render_plan_id, file_path, sha256, duration_ms, validation_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    render.id,
+                    render.render_plan_id,
+                    render.file_path,
+                    render.sha256,
+                    render.duration_ms,
+                    json.dumps(render.validation, sort_keys=True, default=str),
+                    _iso(render.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = f"render {render.id!r} duplicate or plan missing"
+            raise DuplicateRecordError(msg) from exc
+        return render
+
+    def get_render(self, render_id: str) -> Render:
+        row = self._conn.execute("SELECT * FROM renders WHERE id = ?", (render_id,)).fetchone()
+        if row is None:
+            msg = f"render {render_id!r} not found"
+            raise NotFoundError(msg)
+        return self._render(row)
+
+    def list_renders(self, plan_id: str | None = None) -> list[Render]:
+        if plan_id is None:
+            rows = self._conn.execute("SELECT * FROM renders ORDER BY created_at, rowid")
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM renders WHERE render_plan_id = ? ORDER BY created_at, rowid",
+                (plan_id,),
+            )
+        return [self._render(r) for r in rows.fetchall()]
+
+    @staticmethod
+    def _plan(row: sqlite3.Row) -> RenderPlan:
+        return RenderPlan(
+            id=row["id"],
+            editorial_version_id=row["editorial_version_id"],
+            template_version=row["template_version"],
+            width=row["width"],
+            height=row["height"],
+            timeline=_TIMELINE.validate_json(row["timeline_json"]),
+            caption_config=CaptionConfig.model_validate_json(row["caption_config_json"]),
+            overlay_config=OverlayConfig.model_validate_json(row["overlay_config_json"]),
+            created_at=_dt(row["created_at"]) or _fail("created_at"),
+        )
+
+    @staticmethod
+    def _render(row: sqlite3.Row) -> Render:
+        return Render(
+            id=row["id"],
+            render_plan_id=row["render_plan_id"],
+            file_path=row["file_path"],
+            sha256=row["sha256"],
+            duration_ms=row["duration_ms"],
+            validation=_JSON_OBJ.validate_json(row["validation_json"]),
             created_at=_dt(row["created_at"]) or _fail("created_at"),
         )
 

@@ -544,3 +544,110 @@ class ReviewEvent(_Entity):
     def _aware(cls, value: datetime) -> datetime:
         _require_aware(value, "created_at")
         return value
+
+
+# --------------------------------------------------------------------- rendering
+
+
+class TimelineKind(StrEnum):
+    CARD = "card"
+    SOURCE = "source"
+
+
+class Caption(_Entity):
+    """Burned-in caption, times relative to the timeline item start."""
+
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(ge=0)
+    text: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> Caption:
+        if self.end_ms <= self.start_ms:
+            msg = "caption end_ms must be > start_ms"
+            raise ValueError(msg)
+        return self
+
+
+class TimelineItem(_Entity):
+    kind: TimelineKind
+    duration_ms: int = Field(gt=0)
+    title: str = ""
+    body: str = ""
+    source_start_ms: int | None = None
+    source_end_ms: int | None = None
+    captions: list[Caption] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _shape(self) -> TimelineItem:
+        if self.kind is TimelineKind.SOURCE:
+            if self.source_start_ms is None or self.source_end_ms is None:
+                msg = "source item needs source_start_ms and source_end_ms"
+                raise ValueError(msg)
+            if self.source_end_ms - self.source_start_ms != self.duration_ms:
+                msg = "source item duration_ms must equal source_end_ms - source_start_ms"
+                raise ValueError(msg)
+        for c in self.captions:
+            if c.end_ms > self.duration_ms:
+                msg = f"caption {c.text!r} ends after the item ({c.end_ms} > {self.duration_ms})"
+                raise ValueError(msg)
+        return self
+
+
+class CaptionConfig(_Entity):
+    font_size: int = Field(default=58, ge=12)
+    max_words: int = Field(default=5, ge=1)
+    max_chars: int = Field(default=28, ge=8)
+    max_duration_ms: int = Field(default=2500, ge=300)
+    margin_bottom_px: int = Field(default=360, ge=0)
+
+
+class OverlayConfig(_Entity):
+    attribution_text: str | None = None
+    hook_font_size: int = Field(default=68, ge=12)
+    body_font_size: int = Field(default=44, ge=12)
+    attribution_font_size: int = Field(default=30, ge=12)
+    safe_margin_px: int = Field(default=96, ge=0)
+    wrap_chars: int = Field(default=24, ge=8)
+    background_color: str = "0x101418"
+    text_color: str = "white"
+
+
+class RenderPlan(_Entity):
+    """Deterministic description of the vertical draft. Rendering reads nothing else."""
+
+    id: str = Field(min_length=1)
+    editorial_version_id: str = Field(min_length=1)
+    template_version: str = Field(min_length=1)
+    width: int = Field(ge=16)
+    height: int = Field(ge=16)
+    timeline: list[TimelineItem] = Field(min_length=1)
+    caption_config: CaptionConfig
+    overlay_config: OverlayConfig
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "created_at")
+        return value
+
+    @property
+    def total_duration_ms(self) -> int:
+        return sum(item.duration_ms for item in self.timeline)
+
+
+class Render(_Entity):
+    id: str = Field(min_length=1)
+    render_plan_id: str = Field(min_length=1)
+    file_path: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    duration_ms: int = Field(ge=0)
+    validation: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "created_at")
+        return value

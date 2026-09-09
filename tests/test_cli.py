@@ -333,3 +333,48 @@ def test_editorial_and_review_cli(
     monkeypatch.delenv("VME_REVIEWER")
     code, res, _ = _vme("claim", "resolve", gen2["claims"][0]["id"], "--status", "removed")
     assert code == EXIT_ERROR and res["error"] == "ReviewError"
+
+
+@requires_ffmpeg
+def test_render_cli(db: Path, video_mp4_10s: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import vme.cli.main as cli
+
+    sentences = ["Ask not what your country can do.", "Ask what you can do for it, honestly?"]
+    monkeypatch.setattr(
+        cli, "build_transcriber", lambda _s: FakeSpeechToText(sentences, pause_ms=100)
+    )
+    monkeypatch.setattr(
+        cli, "build_llm", lambda _s: FakeLlm(editorial_claims=0, extractor_claims=0)
+    )
+    monkeypatch.setenv("VME_REVIEWER", "operator-1")
+    monkeypatch.setenv("VME_RENDER_PRESET", "ultrafast")
+    _vme("source", "add", "--id", "S001", "--uri", str(video_mp4_10s))
+    _vme("policy", "add", "--source", "S001", "--basis", "owned", "--reference", "r",
+         "--can-ingest", "--can-extract-clip", "--can-transform")  # fmt: skip
+    _, asset, _ = _vme("media", "register", "--source", "S001", str(video_mp4_10s))
+    _, transcript, _ = _vme("transcribe", "--media", asset["id"])
+    _, cands, _ = _vme("segment", "--transcript", transcript["id"], "--min-ms", "2000",
+                       "--target-ms", "20000", "--max-ms", "30000")  # fmt: skip
+    _, gen, _ = _vme("editorial", "generate", "--candidate", cands[0]["id"])
+    draft_id = gen["draft"]["id"]
+
+    code, err, _ = _vme("render", "plan", "--draft", draft_id)
+    assert code == EXIT_ERROR and err["error"] == "PlanError"  # not approved yet
+    code, res, _ = _vme("review", "approve", draft_id)
+    assert code == EXIT_OK and res["draft"]["status"] == "approved"
+
+    code, plan, _ = _vme(
+        "render", "plan", "--draft", draft_id, "--hook-ms", "1000", "--outro-ms", "1000"
+    )
+    assert code == EXIT_OK and [i["kind"] for i in plan["timeline"]] == ["card", "source", "card"]
+    code, plans, _ = _vme("render", "plans", "--draft", draft_id)
+    assert code == EXIT_OK and plans[0]["id"] == plan["id"] and plans[0]["items"] == 3
+
+    code, render, logs = _vme("render", "run", "--plan", plan["id"])
+    assert code == EXIT_OK, render
+    assert render["validation"]["passed"] and Path(render["file_path"]).is_file()
+    assert logs[-2]["event"] == "render_completed" and logs[-2]["file"].startswith("renders/")
+    code, shown, _ = _vme("render", "show", render["id"])
+    assert code == EXIT_OK and shown["plan"]["id"] == plan["id"]
+    code, listed, _ = _vme("render", "list", "--plan", plan["id"])
+    assert code == EXIT_OK and [r["id"] for r in listed] == [render["id"]]

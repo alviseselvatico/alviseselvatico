@@ -83,7 +83,13 @@ uv run vme claim resolve <claim_id> --status human-approved|removed --reviewer <
 uv run vme review approve <draft_id> --reviewer <nome>     # ricontrolla diritti e claim al momento della decisione
 uv run vme review reject <draft_id> --reason weak_hook,off_topic --reviewer <nome>
 uv run vme review events --object-type editorial_version --object-id <draft_id>   # audit log
+uv run vme render plan --draft <draft_id>            # RenderPlan deterministico (solo draft approved; gate clip + render_transform)
+uv run vme render run --plan <plan_id>               # FFmpeg 1080x1920, letterbox sfocato (D013), caption burn-in, validazione ffprobe + sha256
+uv run vme render show <render_id>
 ```
+
+Il render scrive `artifacts/render_plans/<plan_id>.json` e `artifacts/renders/<render_id>.mp4`.
+Serve un font TrueType (DejaVu/Liberation vengono trovati da soli; altrimenti `VME_RENDER_FONT`).
 
 Stati del draft: `generated -> blocked_factcheck | needs_review -> approved | rejected | blocked_rights`;
 `VME_REVIEWER` evita di ripetere `--reviewer`.

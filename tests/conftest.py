@@ -101,3 +101,24 @@ def make_source(source_id: str = "S001", policy_id: str | None = None) -> Source
         created_at=NOW,
         rights_policy_id=policy_id,
     )
+
+
+@pytest.fixture
+def video_mp4_10s(tmp_path: Path) -> Path:
+    """10 s 640x360 test pattern with a sine audio track, for render tests."""
+    return _lavfi(
+        tmp_path / "long.mp4",
+        "-f", "lavfi", "-i", "testsrc=size=640x360:rate=25:duration=10",
+        "-f", "lavfi", "-i", "sine=frequency=330:duration=10",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-shortest",
+    )  # fmt: skip
+
+
+@pytest.fixture
+def audio_wav_10s(tmp_path: Path) -> Path:
+    return _lavfi(
+        tmp_path / "long.wav",
+        "-f", "lavfi", "-i", "sine=frequency=330:duration=10",
+        "-ar", "16000", "-ac", "1",
+    )  # fmt: skip

@@ -1,6 +1,6 @@
 """``vme`` CLI: ``source``, ``policy``, ``media``, ``transcribe``, ``transcript``,
 ``segment``, ``candidate``, ``rank``, ``ranking``, ``llm``, ``editorial``, ``claim``,
-``review``, ``db migrate``.
+``review``, ``render``, ``db migrate``.
 
 Every invocation gets a correlation id, logs JSON to stderr and prints one JSON document
 to stdout. Exit codes: 0 ok, 1 error, 2 usage, 3 blocked by the rights gate.
@@ -39,6 +39,9 @@ from vme.logs import configure_logging, display_path, get_logger, new_correlatio
 from vme.ranking.features import PrefilterConfig
 from vme.ranking.service import RankingConfig, rank_transcript
 from vme.ranking.weights import load_weights
+from vme.rendering.ffmpeg import RenderSettings, find_font
+from vme.rendering.plan import PlanConfig, build_render_plan
+from vme.rendering.service import render_plan_to_file
 from vme.rights.gate import Action, RightsBlockedError, check
 from vme.segmentation.segmenter import SegmentationConfig
 from vme.segmentation.service import segment_and_store
@@ -356,6 +359,46 @@ def cmd_review_events(args: argparse.Namespace, store: Store, _: Settings) -> An
     return store.reviews.list(args.object_type, args.object_id)
 
 
+def cmd_render_plan(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    config = PlanConfig(
+        width=settings.render_width,
+        height=settings.render_height,
+        hook_ms=args.hook_ms or settings.render_hook_ms,
+        outro_ms=args.outro_ms or settings.render_outro_ms,
+    )
+    return build_render_plan(store, args.draft, config, artifacts_dir=settings.artifacts_dir)
+
+
+def cmd_render_run(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    rs = RenderSettings(
+        ffmpeg_bin=settings.ffmpeg_bin,
+        ffprobe_bin=settings.ffprobe_bin,
+        font_path=find_font(settings.render_font or None),
+        preset=args.preset or settings.render_preset,
+        crf=settings.render_crf,
+        fps=settings.render_fps,
+        timeout_s=settings.render_timeout_s,
+    )
+    return render_plan_to_file(store, args.plan, rs, artifacts_dir=settings.artifacts_dir)
+
+
+def cmd_render_show(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    render = store.renders.get_render(args.id)
+    return {"render": render, "plan": store.renders.get_plan(render.render_plan_id)}
+
+
+def cmd_render_plans(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return [
+        p.model_dump(mode="json", exclude={"timeline"})
+        | {"items": len(p.timeline), "total_duration_ms": p.total_duration_ms}
+        for p in store.renders.list_plans(args.draft)
+    ]
+
+
+def cmd_render_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return store.renders.list_renders(args.plan)
+
+
 Handler = Callable[[argparse.Namespace, Store, Settings], Any]
 
 
@@ -560,6 +603,29 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--object-type", help="editorial_version | claim")
     p.add_argument("--object-id")
     p.set_defaults(handler=cmd_review_events)
+
+    # render
+    render = sub.add_parser("render", help="deterministic vertical render (D013)").add_subparsers(
+        dest="command", required=True
+    )
+    p = render.add_parser("plan", help="build a RenderPlan from an approved draft")
+    p.add_argument("--draft", required=True)
+    p.add_argument("--hook-ms", type=int)
+    p.add_argument("--outro-ms", type=int)
+    p.set_defaults(handler=cmd_render_plan)
+    p = render.add_parser("run", help="render a plan to artifacts/renders/<id>.mp4 and validate it")
+    p.add_argument("--plan", required=True)
+    p.add_argument("--preset", help="x264 preset (default VME_RENDER_PRESET)")
+    p.set_defaults(handler=cmd_render_run)
+    p = render.add_parser("show", help="render with its plan")
+    p.add_argument("id")
+    p.set_defaults(handler=cmd_render_show)
+    p = render.add_parser("plans", help="list render plans")
+    p.add_argument("--draft")
+    p.set_defaults(handler=cmd_render_plans)
+    p = render.add_parser("list", help="list renders")
+    p.add_argument("--plan")
+    p.set_defaults(handler=cmd_render_list)
     return parser
 
 

@@ -200,4 +200,33 @@ MIGRATIONS: tuple[Migration, ...] = (
         CREATE INDEX review_events_object_idx ON review_events(object_type, object_id, created_at);
         """,
     ),
+    Migration(
+        version=5,
+        name="phase0_render_plans_renders",
+        sql="""
+        CREATE TABLE render_plans (
+            id                   TEXT PRIMARY KEY,
+            editorial_version_id TEXT    NOT NULL REFERENCES editorial_versions(id),
+            template_version     TEXT    NOT NULL,
+            width                INTEGER NOT NULL,
+            height               INTEGER NOT NULL,
+            timeline_json        TEXT    NOT NULL,
+            caption_config_json  TEXT    NOT NULL,
+            overlay_config_json  TEXT    NOT NULL,
+            created_at           TEXT    NOT NULL
+        );
+        CREATE INDEX render_plans_version_idx ON render_plans(editorial_version_id);
+
+        CREATE TABLE renders (
+            id              TEXT PRIMARY KEY,
+            render_plan_id  TEXT    NOT NULL REFERENCES render_plans(id),
+            file_path       TEXT    NOT NULL,
+            sha256          TEXT    NOT NULL,
+            duration_ms     INTEGER NOT NULL,
+            validation_json TEXT    NOT NULL,
+            created_at      TEXT    NOT NULL
+        );
+        CREATE INDEX renders_plan_idx ON renders(render_plan_id);
+        """,
+    ),
 )

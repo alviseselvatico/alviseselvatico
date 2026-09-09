@@ -18,6 +18,7 @@ from vme.storage.repositories import (
     LlmCallRepository,
     MediaAssetRepository,
     RankingRepository,
+    RenderRepository,
     ReviewEventRepository,
     RightsPolicyRepository,
     SourceRepository,
@@ -101,6 +102,7 @@ class Store:
         self.editorial = EditorialRepository(conn)
         self.claims = ClaimRepository(conn)
         self.reviews = ReviewEventRepository(conn)
+        self.renders = RenderRepository(conn)
 
     @classmethod
     def open(cls, db_path: Path | str) -> Store:
