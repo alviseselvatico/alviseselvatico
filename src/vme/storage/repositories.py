@@ -982,8 +982,8 @@ class LabelRepository:
                 INSERT INTO labels (
                     id, candidate_id, reviewer, decision, boundary_correct, hook_quality,
                     factual_risk, rights_risk, rejection_reasons_json, expected_performance,
-                    edited_text, notes, taxonomy_version, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    edited_text, notes, taxonomy_version, provisional, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     label.id,
@@ -999,6 +999,7 @@ class LabelRepository:
                     label.edited_text,
                     label.notes,
                     label.taxonomy_version,
+                    int(label.provisional),
                     _iso(label.created_at),
                 ),
             )
@@ -1050,6 +1051,7 @@ class LabelRepository:
             edited_text=row["edited_text"],
             notes=row["notes"],
             taxonomy_version=row["taxonomy_version"],
+            provisional=bool(row["provisional"]),
             created_at=_dt(row["created_at"]) or _fail("created_at"),
         )
 

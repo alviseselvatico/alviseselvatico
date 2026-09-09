@@ -21,6 +21,16 @@ the SHA-256 of the exact bytes and prints the rights evidence for each. Current 
 | name | file | length | rights basis | evidence |
 |------|------|--------|--------------|----------|
 | `jfk` | `external/jfk.wav` | 11 s | public domain, US federal government work (17 U.S.C. §105) — candidate, operator to confirm | JFK inaugural address 1961-01-20; copy from `ggerganov/whisper.cpp` `samples/jfk.wav` |
+| `fdr_fireside_1933-03-12` | `external/fdr_fireside_1933-03-12.mp3` | 13 min | public domain, US federal government work | FDR first Fireside Chat "On the Banking Crisis"; FDR Presidential Library upload on archive.org, SHA-1 cross-checked |
+| `keynes_consequences_01/02` | `external/keynes_consequences_0*.mp3` | 8 + 22 min | public domain (LibriVox CC0 recording of a 1919 text) | Keynes, *The Economic Consequences of the Peace*, ch. 1-2, archive.org |
+| `bastiat_sophisms_02` | `external/bastiat_sophisms_02.mp3` | 23 min | public domain (LibriVox recording, 19th-century translation) | Bastiat, *Economic Sophisms*, ch. 2, archive.org |
+| `librivox_heartofamystery_01` | `external/librivox_heartofamystery_01.mp3` | 17 min | public domain (LibriVox recording of a 1901 novel) | archive.org `heartofamystery_2005_librivox`, SHA-1 cross-checked |
+
+The macro/economics set (FDR, Keynes, Bastiat: 66 min, 3 distinct sources) is the bootstrap
+supply of D029. Reviewed and not yet added: ECB podcasts (reproduction permitted with
+attribution and disclosure of modifications per the ECB disclaimer, but no direct audio
+download or RSS enclosure was found from this environment) and VOA (public domain, but
+videos embed AP/AFP/Reuters footage that is not).
 | `librivox_heartofamystery_01` | `external/librivox_heartofamystery_01.mp3` | 16 min 38 s | public domain (LibriVox recording of a 1901 work) — candidate, operator to confirm | archive.org item `heartofamystery_2005_librivox`, licenseurl publicdomain/mark/1.0, SHA-1 published by archive.org |
 
 Candidates reviewed but **not** added:

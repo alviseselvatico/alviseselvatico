@@ -273,4 +273,11 @@ MIGRATIONS: tuple[Migration, ...] = (
         CREATE INDEX benchmarks_batch_idx ON benchmarks(ranking_batch_id);
         """,
     ),
+    Migration(
+        version=8,
+        name="labels_provisional",
+        sql="""
+        ALTER TABLE labels ADD COLUMN provisional INTEGER NOT NULL DEFAULT 0;
+        """,
+    ),
 )

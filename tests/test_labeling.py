@@ -214,3 +214,52 @@ def test_review_reject_uses_taxonomy(store: Store, audio_wav: Path, artifacts_di
         store, draft.id, reviewer="bob", reason_codes=["Weak_Hook", "other"], notes="x", now=NOW
     )
     assert out.event.reason_codes == ["weak_hook", "other"]
+
+
+def test_provisional_labels_yield_to_human_labels() -> None:
+    prov = _lbl("claude-bootstrap", LabelDecision.APPROVE, PerformanceBucket.HIGH)
+    prov = prov.model_copy(update={"provisional": True})
+    # alone: provisional labels drive the judgement
+    d, rel, _ = aggregate([prov])
+    assert d is LabelDecision.APPROVE and rel == 3.0
+    # a human reject wins outright, it is not a tie with the provisional approve
+    human = _lbl("alice", LabelDecision.REJECT, minute=1)
+    d, rel, agr = aggregate([prov, human])
+    assert d is LabelDecision.REJECT and rel == 0.0 and agr is None
+
+
+@requires_ffmpeg
+def test_provisional_share_is_reported(store: Store, audio_wav: Path, artifacts_dir: Path) -> None:
+    tid, cands = _pipeline(store, audio_wav, artifacts_dir)
+    add_label(
+        store,
+        cands[0],
+        reviewer="bot",
+        decision=LabelDecision.APPROVE,
+        taxonomy=TAX,
+        provisional=True,
+        now=NOW,
+    )
+    add_label(
+        store,
+        cands[1],
+        reviewer="bot",
+        decision=LabelDecision.APPROVE,
+        taxonomy=TAX,
+        provisional=True,
+        now=NOW,
+    )
+    add_label(
+        store,
+        cands[1],
+        reviewer="alice",
+        decision=LabelDecision.REJECT,
+        taxonomy=TAX,
+        rejection_reasons=["unclear"],
+        now=NOW,
+    )
+    rows = golden_rows(store, tid)
+    by_id = {r.candidate.id: r for r in rows}
+    assert by_id[cands[0]].provisional is True and by_id[cands[1]].provisional is False
+    assert by_id[cands[1]].decision is LabelDecision.REJECT
+    assert store.labels.get(store.labels.list(candidate_id=cands[0])[0].id).provisional is True

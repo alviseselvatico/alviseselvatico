@@ -48,6 +48,7 @@ def add_label(
     expected_performance: PerformanceBucket | None = None,
     edited_text: str | None = None,
     notes: str | None = None,
+    provisional: bool = False,
     now: datetime | None = None,
 ) -> Label:
     now = now or utc_now()
@@ -76,6 +77,7 @@ def add_label(
         edited_text=(edited_text or "").strip() or None,
         notes=notes,
         taxonomy_version=taxonomy.version,
+        provisional=provisional,
         created_at=now,
     )
     with store.transaction():
@@ -89,6 +91,7 @@ def add_label(
             "decision": decision.value,
             "reasons": reasons,
             "expected_performance": expected_performance.value if expected_performance else None,
+            "provisional": provisional,
         },
     )
     return label
@@ -104,6 +107,7 @@ class GoldenRow:
     relevance: float  # 0 = reject; 1..3 = expected bucket (2 when approved without bucket)
     reviewer_agreement: float | None  # share of reviewers agreeing with the majority
     run: RankingRun | None
+    provisional: bool = False  # True when only provisional labels back the judgement
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -111,6 +115,7 @@ class GoldenRow:
             "decision": self.decision.value,
             "relevance": self.relevance,
             "reviewer_agreement": self.reviewer_agreement,
+            "provisional": self.provisional,
             "labels": [lb.model_dump(mode="json") for lb in self.labels],
             "ranking_run": self.run.model_dump(mode="json") if self.run else None,
         }
@@ -123,9 +128,16 @@ def latest_per_reviewer(labels: list[Label]) -> list[Label]:
     return list(latest.values())
 
 
+def effective_labels(labels: list[Label]) -> list[Label]:
+    """Latest per reviewer; provisional labels count only while no human label exists (D028)."""
+    latest = latest_per_reviewer(labels)
+    human = [lb for lb in latest if not lb.provisional]
+    return human or latest
+
+
 def aggregate(labels: list[Label]) -> tuple[LabelDecision, float, float | None]:
     """Majority decision (ties reject), graded relevance, agreement share."""
-    latest = latest_per_reviewer(labels)
+    latest = effective_labels(labels)
     approvals = [lb for lb in latest if lb.decision is LabelDecision.APPROVE]
     approve = len(approvals) * 2 > len(latest)
     decision = LabelDecision.APPROVE if approve else LabelDecision.REJECT
@@ -159,14 +171,16 @@ def golden_rows(
                 for run in store.ranking.list_runs(batches[-1].id):
                     runs_by_candidate.setdefault(run.candidate_id, run)
         decision, relevance, agreement = aggregate(lbs)
+        effective = effective_labels(lbs)
         rows.append(
             GoldenRow(
                 candidate=candidate,
-                labels=latest_per_reviewer(lbs),
+                labels=effective,
                 decision=decision,
                 relevance=relevance,
                 reviewer_agreement=agreement,
                 run=runs_by_candidate.get(cid),
+                provisional=all(lb.provisional for lb in effective),
             )
         )
     rows.sort(key=lambda r: (r.candidate.transcript_id, r.candidate.start_ms))

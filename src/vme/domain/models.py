@@ -701,6 +701,10 @@ class Label(_Entity):
     edited_text: str | None = None
     notes: str | None = None
     taxonomy_version: str = Field(min_length=1)
+    provisional: bool = Field(
+        default=False,
+        description="bootstrap label by a machine or draft reviewer; yields to any human label",
+    )
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("created_at")

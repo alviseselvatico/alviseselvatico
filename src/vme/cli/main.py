@@ -524,6 +524,7 @@ def cmd_label_add(args: argparse.Namespace, store: Store, settings: Settings) ->
         expected_performance=PerformanceBucket(args.expected) if args.expected else None,
         edited_text=edited,
         notes=args.note,
+        provisional=args.provisional,
     )
 
 
@@ -549,7 +550,8 @@ def cmd_golden_export(args: argparse.Namespace, store: Store, _: Settings) -> An
         "approved": approved,
         "rejected": len(rows) - approved,
         "with_ranking_run": sum(r.run is not None for r in rows),
-        "meets_exit_size": len(rows) >= 50,
+        "provisional": sum(r.provisional for r in rows),
+        "meets_exit_size": sum(not r.provisional for r in rows) >= 50,
     }
 
 
@@ -857,6 +859,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="expected performance bucket",
     )
     p.add_argument("--edited-text-file", help="file with an operator-edited excerpt text")
+    p.add_argument(
+        "--provisional",
+        action="store_true",
+        help="bootstrap label (machine or draft reviewer); ignored once a human label exists",
+    )
     p.add_argument("--reviewer")
     p.add_argument("--note")
     p.set_defaults(handler=cmd_label_add)
