@@ -86,6 +86,7 @@ uv run vme review events --object-type editorial_version --object-id <draft_id> 
 uv run vme render plan --draft <draft_id>            # RenderPlan deterministico (solo draft approved; gate clip + render_transform)
 uv run vme render run --plan <plan_id>               # FFmpeg 1080x1920, letterbox sfocato (D013), caption burn-in, validazione ffprobe + sha256
 uv run vme render show <render_id>
+uv run vme pipeline run --source S001 --path /path/al/file.mp4 --top 3   # tutte le fasi automatiche in un colpo, fino alla review umana
 ```
 
 Il render scrive `artifacts/render_plans/<plan_id>.json` e `artifacts/renders/<render_id>.mp4`.
