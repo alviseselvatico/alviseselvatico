@@ -236,4 +236,41 @@ MIGRATIONS: tuple[Migration, ...] = (
         ALTER TABLE ranking_runs ADD COLUMN tier TEXT NOT NULL DEFAULT 'prefilter';
         """,
     ),
+    Migration(
+        version=7,
+        name="phase1_labels_benchmarks",
+        sql="""
+        CREATE TABLE labels (
+            id                     TEXT PRIMARY KEY,
+            candidate_id           TEXT    NOT NULL REFERENCES candidates(id),
+            reviewer               TEXT    NOT NULL,
+            decision               TEXT    NOT NULL,
+            boundary_correct       INTEGER,
+            hook_quality           INTEGER,
+            factual_risk           INTEGER,
+            rights_risk            INTEGER,
+            rejection_reasons_json TEXT    NOT NULL,
+            expected_performance   TEXT,
+            edited_text            TEXT,
+            notes                  TEXT,
+            taxonomy_version       TEXT    NOT NULL,
+            created_at             TEXT    NOT NULL
+        );
+        CREATE INDEX labels_candidate_idx ON labels(candidate_id, created_at);
+
+        CREATE TABLE benchmarks (
+            id               TEXT PRIMARY KEY,
+            ranking_batch_id TEXT    NOT NULL REFERENCES ranking_batches(id),
+            transcript_id    TEXT    NOT NULL REFERENCES transcripts(id),
+            scoring_version  TEXT    NOT NULL,
+            weights_version  TEXT    NOT NULL,
+            prompt_version   TEXT    NOT NULL,
+            model_alias      TEXT    NOT NULL,
+            n_labeled        INTEGER NOT NULL,
+            metrics_json     TEXT    NOT NULL,
+            created_at       TEXT    NOT NULL
+        );
+        CREATE INDEX benchmarks_batch_idx ON benchmarks(ranking_batch_id);
+        """,
+    ),
 )

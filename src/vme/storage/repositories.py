@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from vme.domain.models import (
+    Benchmark,
     Candidate,
     CaptionConfig,
     Claim,
@@ -17,6 +18,7 @@ from vme.domain.models import (
     DraftStatus,
     EditorialVersion,
     ExcerptSpan,
+    Label,
     LlmCall,
     MediaAsset,
     OverlayConfig,
@@ -965,6 +967,153 @@ class RenderRepository:
             sha256=row["sha256"],
             duration_ms=row["duration_ms"],
             validation=_JSON_OBJ.validate_json(row["validation_json"]),
+            created_at=_dt(row["created_at"]) or _fail("created_at"),
+        )
+
+
+class LabelRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def add(self, label: Label) -> Label:
+        try:
+            self._conn.execute(
+                """
+                INSERT INTO labels (
+                    id, candidate_id, reviewer, decision, boundary_correct, hook_quality,
+                    factual_risk, rights_risk, rejection_reasons_json, expected_performance,
+                    edited_text, notes, taxonomy_version, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    label.id,
+                    label.candidate_id,
+                    label.reviewer,
+                    label.decision.value,
+                    None if label.boundary_correct is None else int(label.boundary_correct),
+                    label.hook_quality,
+                    label.factual_risk,
+                    label.rights_risk,
+                    json.dumps(label.rejection_reasons),
+                    label.expected_performance.value if label.expected_performance else None,
+                    label.edited_text,
+                    label.notes,
+                    label.taxonomy_version,
+                    _iso(label.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = f"label {label.id!r} duplicate or candidate missing"
+            raise DuplicateRecordError(msg) from exc
+        return label
+
+    def get(self, label_id: str) -> Label:
+        row = self._conn.execute("SELECT * FROM labels WHERE id = ?", (label_id,)).fetchone()
+        if row is None:
+            msg = f"label {label_id!r} not found"
+            raise NotFoundError(msg)
+        return self._to_model(row)
+
+    def list(
+        self, candidate_id: str | None = None, transcript_id: str | None = None
+    ) -> list[Label]:
+        if candidate_id is not None:
+            rows = self._conn.execute(
+                "SELECT * FROM labels WHERE candidate_id = ? ORDER BY created_at, rowid",
+                (candidate_id,),
+            )
+        elif transcript_id is not None:
+            rows = self._conn.execute(
+                "SELECT l.* FROM labels l JOIN candidates c ON c.id = l.candidate_id "
+                "WHERE c.transcript_id = ? ORDER BY l.created_at, l.rowid",
+                (transcript_id,),
+            )
+        else:
+            rows = self._conn.execute("SELECT * FROM labels ORDER BY created_at, rowid")
+        return [self._to_model(r) for r in rows.fetchall()]
+
+    @staticmethod
+    def _to_model(row: sqlite3.Row) -> Label:
+        return Label(
+            id=row["id"],
+            candidate_id=row["candidate_id"],
+            reviewer=row["reviewer"],
+            decision=row["decision"],
+            boundary_correct=None
+            if row["boundary_correct"] is None
+            else bool(row["boundary_correct"]),
+            hook_quality=row["hook_quality"],
+            factual_risk=row["factual_risk"],
+            rights_risk=row["rights_risk"],
+            rejection_reasons=_STR_LIST.validate_json(row["rejection_reasons_json"]),
+            expected_performance=row["expected_performance"],
+            edited_text=row["edited_text"],
+            notes=row["notes"],
+            taxonomy_version=row["taxonomy_version"],
+            created_at=_dt(row["created_at"]) or _fail("created_at"),
+        )
+
+
+class BenchmarkRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def add(self, bench: Benchmark) -> Benchmark:
+        try:
+            self._conn.execute(
+                """
+                INSERT INTO benchmarks (
+                    id, ranking_batch_id, transcript_id, scoring_version, weights_version,
+                    prompt_version, model_alias, n_labeled, metrics_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    bench.id,
+                    bench.ranking_batch_id,
+                    bench.transcript_id,
+                    bench.scoring_version,
+                    bench.weights_version,
+                    bench.prompt_version,
+                    bench.model_alias,
+                    bench.n_labeled,
+                    json.dumps(bench.metrics, sort_keys=True, default=str),
+                    _iso(bench.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = f"benchmark {bench.id!r} duplicate or batch/transcript missing"
+            raise DuplicateRecordError(msg) from exc
+        return bench
+
+    def get(self, bench_id: str) -> Benchmark:
+        row = self._conn.execute("SELECT * FROM benchmarks WHERE id = ?", (bench_id,)).fetchone()
+        if row is None:
+            msg = f"benchmark {bench_id!r} not found"
+            raise NotFoundError(msg)
+        return self._to_model(row)
+
+    def list(self, transcript_id: str | None = None) -> list[Benchmark]:
+        if transcript_id is None:
+            rows = self._conn.execute("SELECT * FROM benchmarks ORDER BY created_at, rowid")
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM benchmarks WHERE transcript_id = ? ORDER BY created_at, rowid",
+                (transcript_id,),
+            )
+        return [self._to_model(r) for r in rows.fetchall()]
+
+    @staticmethod
+    def _to_model(row: sqlite3.Row) -> Benchmark:
+        return Benchmark(
+            id=row["id"],
+            ranking_batch_id=row["ranking_batch_id"],
+            transcript_id=row["transcript_id"],
+            scoring_version=row["scoring_version"],
+            weights_version=row["weights_version"],
+            prompt_version=row["prompt_version"],
+            model_alias=row["model_alias"],
+            n_labeled=row["n_labeled"],
+            metrics=_JSON_OBJ.validate_json(row["metrics_json"]),
             created_at=_dt(row["created_at"]) or _fail("created_at"),
         )
 

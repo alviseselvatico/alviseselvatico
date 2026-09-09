@@ -106,7 +106,19 @@ about 40 seconds at the `medium` preset.
 - Cache reads and writes are not modelled; the pipeline does not use prompt caching yet.
 - `estimated_cost_usd` on `LlmCall` stays `NULL` on purpose. Cost is a reporting concern.
 
-## 5. Not built
+## 5. Phase 1 harness (built, waiting for sources)
+
+`label add` records the seven DATA_MODEL §3 dimensions per candidate, append-only, with
+rejection reasons validated against a versioned taxonomy (`reasons_v1`); `review reject`
+uses the same taxonomy. `golden export` writes labeled candidates with their aggregated
+judgement (majority decision, ties reject, graded relevance from the expected bucket) and
+the ranking run they were scored in. `bench run` persists precision@k, NDCG@k, pairwise
+agreement and score calibration for one batch together with scoring, weights and prompt
+versions; `bench compare` flags any drop beyond a tolerance. A committed fixture pins the
+Viral Score formula and weights so a change fails the test suite instead of passing
+unnoticed. The Phase 1 entry condition (3 authorized sources, 3 hours, D017) still holds.
+
+## 6. Not built
 
 Publishing, dashboards, queues, evidence retrieval, TTS, smart crop, multi-tenancy. Draft
 text cannot be edited from the CLI: a rejected draft is regenerated, not patched. Claim

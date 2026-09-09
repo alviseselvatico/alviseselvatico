@@ -2,10 +2,12 @@
 
 from vme.storage.db import Store, connect, migrate
 from vme.storage.repositories import (
+    BenchmarkRepository,
     CandidateRepository,
     ClaimRepository,
     DuplicateRecordError,
     EditorialRepository,
+    LabelRepository,
     LlmCallRepository,
     MediaAssetRepository,
     NotFoundError,
@@ -18,10 +20,12 @@ from vme.storage.repositories import (
 )
 
 __all__ = [
+    "BenchmarkRepository",
     "CandidateRepository",
     "ClaimRepository",
     "DuplicateRecordError",
     "EditorialRepository",
+    "LabelRepository",
     "LlmCallRepository",
     "MediaAssetRepository",
     "NotFoundError",

@@ -1,6 +1,6 @@
 """``vme`` CLI: ``source``, ``policy``, ``media``, ``transcribe``, ``transcript``,
 ``segment``, ``candidate``, ``rank``, ``ranking``, ``llm``, ``editorial``, ``claim``,
-``review``, ``render``, ``pipeline``, ``report``, ``db migrate``.
+``review``, ``render``, ``pipeline``, ``report``, ``label``, ``golden``, ``bench``, ``db migrate``.
 
 Every invocation gets a correlation id, logs JSON to stderr and prints one JSON document
 to stdout. Exit codes: 0 ok, 1 error, 2 usage, 3 blocked by the rights gate.
@@ -24,6 +24,8 @@ from vme.domain.models import (
     BasisType,
     ClaimStatus,
     InvalidTransitionError,
+    LabelDecision,
+    PerformanceBucket,
     RightsPolicy,
     Source,
     SourceKind,
@@ -32,8 +34,11 @@ from vme.domain.models import (
 )
 from vme.editorial.review import approve, recheck, reject, resolve_claim
 from vme.editorial.service import EditorialConfig, generate_editorial
+from vme.evaluation.benchmark import compare_benchmarks, run_benchmark
 from vme.ingestion.probe import ProbeError
 from vme.ingestion.register import IngestionError, register_local_media
+from vme.labeling.service import add_label, golden_rows
+from vme.labeling.taxonomy import load_taxonomy
 from vme.llm.factory import build_llm
 from vme.logs import configure_logging, display_path, get_logger, new_correlation_id
 from vme.pipeline import PipelineConfig, run_pipeline
@@ -346,6 +351,7 @@ def cmd_review_reject(args: argparse.Namespace, store: Store, settings: Settings
         reviewer=_reviewer(args, settings),
         reason_codes=[r for part in args.reason for r in part.split(",")],
         notes=args.note,
+        taxonomy=load_taxonomy(settings.taxonomy_path),
     )
     return {"draft": outcome.draft, "event": outcome.event}
 
@@ -493,6 +499,79 @@ def cmd_report_cost(args: argparse.Namespace, store: Store, settings: Settings) 
             for s in report.stages
         ],
     }
+
+
+def cmd_label_add(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    edited = (
+        Path(args.edited_text_file).read_text(encoding="utf-8") if args.edited_text_file else None
+    )
+    boundary: bool | None = None
+    if args.boundary_correct:
+        boundary = True
+    elif args.boundary_wrong:
+        boundary = False
+    return add_label(
+        store,
+        args.candidate,
+        reviewer=_reviewer(args, settings),
+        decision=LabelDecision(args.decision),
+        taxonomy=load_taxonomy(settings.taxonomy_path),
+        boundary_correct=boundary,
+        hook_quality=args.hook,
+        factual_risk=args.factual_risk,
+        rights_risk=args.rights_risk,
+        rejection_reasons=[r for part in (args.reason or []) for r in part.split(",")],
+        expected_performance=PerformanceBucket(args.expected) if args.expected else None,
+        edited_text=edited,
+        notes=args.note,
+    )
+
+
+def cmd_label_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return store.labels.list(candidate_id=args.candidate, transcript_id=args.transcript)
+
+
+def cmd_label_taxonomy(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    return load_taxonomy(settings.taxonomy_path)
+
+
+def cmd_golden_export(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    rows = golden_rows(store, transcript_id=args.transcript, batch_id=args.batch)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8") as fh:
+        for row in rows:
+            fh.write(json.dumps(row.to_json(), ensure_ascii=False, sort_keys=True) + "\n")
+    approved = sum(r.decision.value == "approve" for r in rows)
+    return {
+        "path": str(out),
+        "rows": len(rows),
+        "approved": approved,
+        "rejected": len(rows) - approved,
+        "with_ranking_run": sum(r.run is not None for r in rows),
+        "meets_exit_size": len(rows) >= 50,
+    }
+
+
+def cmd_bench_run(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return run_benchmark(store, args.batch)
+
+
+def cmd_bench_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return [
+        b.model_dump(mode="json", exclude={"metrics"})
+        | {
+            "pairwise_agreement": b.metrics.get("pairwise_agreement"),
+            "precision_at_5": b.metrics.get("precision_at_5"),
+        }
+        for b in store.benchmarks.list(args.transcript)
+    ]
+
+
+def cmd_bench_compare(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return compare_benchmarks(
+        store, args.baseline, args.candidate, tolerance=args.tolerance
+    ).to_json()
 
 
 Handler = Callable[[argparse.Namespace, Store, Settings], Any]
@@ -755,6 +834,67 @@ def build_parser() -> argparse.ArgumentParser:
     p = report.add_parser("cost", help="LLM spend per stage from recorded token usage")
     p.add_argument("--prices", help="price list JSON (default: packaged anthropic_v1)")
     p.set_defaults(handler=cmd_report_cost)
+
+    # label / golden / bench (Phase 1)
+    label = sub.add_parser("label", help="human labels on candidates (golden set)").add_subparsers(
+        dest="command", required=True
+    )
+    p = label.add_parser("add", help="record a label (append-only)")
+    p.add_argument("--candidate", required=True)
+    p.add_argument("--decision", required=True, choices=[d.value for d in LabelDecision])
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--boundary-correct", action="store_true")
+    g.add_argument("--boundary-wrong", action="store_true")
+    p.add_argument("--hook", type=int, choices=range(1, 6), help="hook quality 1-5")
+    p.add_argument("--factual-risk", type=int, choices=range(1, 6), help="1 none .. 5 severe")
+    p.add_argument("--rights-risk", type=int, choices=range(1, 6), help="1 none .. 5 severe")
+    p.add_argument(
+        "--reason", action="append", help="taxonomy code (repeatable or comma-separated)"
+    )
+    p.add_argument(
+        "--expected",
+        choices=[b.value for b in PerformanceBucket],
+        help="expected performance bucket",
+    )
+    p.add_argument("--edited-text-file", help="file with an operator-edited excerpt text")
+    p.add_argument("--reviewer")
+    p.add_argument("--note")
+    p.set_defaults(handler=cmd_label_add)
+    p = label.add_parser("list", help="list labels")
+    p.add_argument("--candidate")
+    p.add_argument("--transcript")
+    p.set_defaults(handler=cmd_label_list)
+    label.add_parser("taxonomy", help="show the rejection-reason taxonomy").set_defaults(
+        handler=cmd_label_taxonomy
+    )
+
+    golden = sub.add_parser("golden", help="golden evaluation set").add_subparsers(
+        dest="command", required=True
+    )
+    p = golden.add_parser("export", help="labeled candidates with aggregated judgement, JSONL")
+    p.add_argument("--out", required=True)
+    p.add_argument("--transcript")
+    p.add_argument(
+        "--batch", help="join with this ranking batch instead of the latest per transcript"
+    )
+    p.set_defaults(handler=cmd_golden_export)
+
+    bench = sub.add_parser("bench", help="ranking benchmarks against labels").add_subparsers(
+        dest="command", required=True
+    )
+    p = bench.add_parser(
+        "run", help="evaluate a ranking batch against labels and persist the result"
+    )
+    p.add_argument("--batch", required=True)
+    p.set_defaults(handler=cmd_bench_run)
+    p = bench.add_parser("list", help="list benchmarks")
+    p.add_argument("--transcript")
+    p.set_defaults(handler=cmd_bench_list)
+    p = bench.add_parser("compare", help="metric deltas between two benchmarks; flags regressions")
+    p.add_argument("baseline")
+    p.add_argument("candidate")
+    p.add_argument("--tolerance", type=float, default=0.02)
+    p.set_defaults(handler=cmd_bench_compare)
     return parser
 
 

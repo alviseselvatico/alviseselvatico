@@ -1,0 +1,342 @@
+{
+ "cases": [
+  {
+   "components": {
+    "audience_fit": 0.816,
+    "authority": 0.176,
+    "clarity": 0.643,
+    "emotion": 0.843,
+    "hook_strength": 0.043,
+    "information_density": 0.373,
+    "novelty": 0.412,
+    "quotability": 0.533,
+    "self_containedness": 0.255,
+    "tension": 0.361,
+    "topic_relevance": 0.965,
+    "visual_editability": 0.686
+   },
+   "expected": {
+    "final": 18.323,
+    "penalty": 28.655,
+    "raw": 46.978
+   },
+   "penalties": {
+    "brand_safety_risk": 0.088,
+    "context_dependency": 0.047,
+    "factual_risk": 0.364,
+    "overclaim_risk": 0.282,
+    "rights_risk": 0.345
+   }
+  },
+  {
+   "components": {
+    "audience_fit": 0.878,
+    "authority": 0.573,
+    "clarity": 0.671,
+    "emotion": 0.961,
+    "hook_strength": 0.282,
+    "information_density": 0.941,
+    "novelty": 0.525,
+    "quotability": 1.0,
+    "self_containedness": 0.871,
+    "tension": 0.702,
+    "topic_relevance": 0.286,
+    "visual_editability": 0.424
+   },
+   "expected": {
+    "final": 48.633,
+    "penalty": 17.515,
+    "raw": 66.148
+   },
+   "penalties": {
+    "brand_safety_risk": 0.069,
+    "context_dependency": 0.213,
+    "factual_risk": 0.221,
+    "overclaim_risk": 0.042,
+    "rights_risk": 0.18
+   }
+  },
+  {
+   "components": {
+    "audience_fit": 0.325,
+    "authority": 0.851,
+    "clarity": 0.314,
+    "emotion": 0.925,
+    "hook_strength": 0.29,
+    "information_density": 0.741,
+    "novelty": 0.847,
+    "quotability": 0.894,
+    "self_containedness": 0.337,
+    "tension": 0.8,
+    "topic_relevance": 0.627,
+    "visual_editability": 0.557
+   },
+   "expected": {
+    "final": 35.413,
+    "penalty": 25.065,
+    "raw": 60.478
+   },
+   "penalties": {
+    "brand_safety_risk": 0.071,
+    "context_dependency": 0.199,
+    "factual_risk": 0.394,
+    "overclaim_risk": 0.362,
+    "rights_risk": 0.166
+   }
+  },
+  {
+   "components": {
+    "audience_fit": 0.824,
+    "authority": 0.902,
+    "clarity": 0.369,
+    "emotion": 0.839,
+    "hook_strength": 0.318,
+    "information_density": 0.376,
+    "novelty": 0.816,
+    "quotability": 0.557,
+    "self_containedness": 0.357,
+    "tension": 0.459,
+    "topic_relevance": 0.631,
+    "visual_editability": 0.055
+   },
+   "expected": {
+    "final": 28.436,
+    "penalty": 25.135,
+    "raw": 53.571
+   },
+   "penalties": {
+    "brand_safety_risk": 0.165,
+    "context_dependency": 0.166,
+    "factual_risk": 0.355,
+    "overclaim_risk": 0.333,
+    "rights_risk": 0.14
+   }
+  },
+  {
+   "components": {
+    "audience_fit": 0.839,
+    "authority": 0.161,
+    "clarity": 0.325,
+    "emotion": 0.314,
+    "hook_strength": 0.761,
+    "information_density": 0.094,
+    "novelty": 0.604,
+    "quotability": 0.718,
+    "self_containedness": 0.957,
+    "tension": 0.482,
+    "topic_relevance": 0.604,
+    "visual_editability": 0.412
+   },
+   "expected": {
+    "final": 34.636,
+    "penalty": 20.38,
+    "raw": 55.016
+   },
+   "penalties": {
+    "brand_safety_risk": 0.115,
+    "context_dependency": 0.02,
+    "factual_risk": 0.019,
+    "overclaim_risk": 0.318,
+    "rights_risk": 0.287
+   }
+  },
+  {
+   "components": {
+    "audience_fit": 0.459,
+    "authority": 0.212,
+    "clarity": 0.451,
+    "emotion": 0.451,
+    "hook_strength": 0.278,
+    "information_density": 0.255,
+    "novelty": 0.569,
+    "quotability": 0.482,
+    "self_containedness": 0.165,
+    "tension": 0.984,
+    "topic_relevance": 0.161,
+    "visual_editability": 0.659
+   },
+   "expected": {
+    "final": 17.107,
+    "penalty": 23.82,
+    "raw": 40.927
+   },
+   "penalties": {
+    "brand_safety_risk": 0.334,
+    "context_dependency": 0.108,
+    "factual_risk": 0.237,
+    "overclaim_risk": 0.384,
+    "rights_risk": 0.042
+   }
+  },
+  {
+   "components": {
+    "audience_fit": 0.4,
+    "authority": 0.384,
+    "clarity": 0.596,
+    "emotion": 0.282,
+    "hook_strength": 0.627,
+    "information_density": 0.898,
+    "novelty": 0.337,
+    "quotability": 0.647,
+    "self_containedness": 0.914,
+    "tension": 0.733,
+    "topic_relevance": 0.769,
+    "visual_editability": 0.027
+   },
+   "expected": {
+    "final": 29.569,
+    "penalty": 28.405,
+    "raw": 57.974
+   },
+   "penalties": {
+    "brand_safety_risk": 0.129,
+    "context_dependency": 0.042,
+    "factual_risk": 0.27,
+    "overclaim_risk": 0.351,
+    "rights_risk": 0.331
+   }
+  },
+  {
+   "components": {
+    "audience_fit": 0.675,
+    "authority": 0.145,
+    "clarity": 0.871,
+    "emotion": 0.039,
+    "hook_strength": 0.059,
+    "information_density": 0.447,
+    "novelty": 0.498,
+    "quotability": 0.545,
+    "self_containedness": 0.259,
+    "tension": 0.718,
+    "topic_relevance": 0.62,
+    "visual_editability": 0.118
+   },
+   "expected": {
+    "final": 11.308,
+    "penalty": 28.84,
+    "raw": 40.148
+   },
+   "penalties": {
+    "brand_safety_risk": 0.372,
+    "context_dependency": 0.356,
+    "factual_risk": 0.078,
+    "overclaim_risk": 0.1,
+    "rights_risk": 0.232
+   }
+  },
+  {
+   "components": {
+    "audience_fit": 0.173,
+    "authority": 0.929,
+    "clarity": 0.706,
+    "emotion": 0.588,
+    "hook_strength": 0.18,
+    "information_density": 0.275,
+    "novelty": 0.42,
+    "quotability": 0.18,
+    "self_containedness": 0.565,
+    "tension": 0.69,
+    "topic_relevance": 0.322,
+    "visual_editability": 0.267
+   },
+   "expected": {
+    "final": 28.667,
+    "penalty": 14.42,
+    "raw": 43.087
+   },
+   "penalties": {
+    "brand_safety_risk": 0.067,
+    "context_dependency": 0.213,
+    "factual_risk": 0.127,
+    "overclaim_risk": 0.053,
+    "rights_risk": 0.147
+   }
+  },
+  {
+   "components": {
+    "audience_fit": 0.341,
+    "authority": 0.427,
+    "clarity": 0.439,
+    "emotion": 0.345,
+    "hook_strength": 0.031,
+    "information_density": 0.984,
+    "novelty": 0.247,
+    "quotability": 0.851,
+    "self_containedness": 0.227,
+    "tension": 0.902,
+    "topic_relevance": 0.408,
+    "visual_editability": 0.953
+   },
+   "expected": {
+    "final": 13.065,
+    "penalty": 33.435,
+    "raw": 46.5
+   },
+   "penalties": {
+    "brand_safety_risk": 0.318,
+    "context_dependency": 0.256,
+    "factual_risk": 0.118,
+    "overclaim_risk": 0.121,
+    "rights_risk": 0.397
+   }
+  },
+  {
+   "components": {
+    "audience_fit": 0.192,
+    "authority": 0.627,
+    "clarity": 0.886,
+    "emotion": 0.153,
+    "hook_strength": 0.788,
+    "information_density": 0.894,
+    "novelty": 0.851,
+    "quotability": 0.925,
+    "self_containedness": 0.302,
+    "tension": 0.506,
+    "topic_relevance": 0.263,
+    "visual_editability": 0.49
+   },
+   "expected": {
+    "final": 29.85,
+    "penalty": 29.06,
+    "raw": 58.91
+   },
+   "penalties": {
+    "brand_safety_risk": 0.216,
+    "context_dependency": 0.162,
+    "factual_risk": 0.304,
+    "overclaim_risk": 0.13,
+    "rights_risk": 0.303
+   }
+  },
+  {
+   "components": {
+    "audience_fit": 0.392,
+    "authority": 0.659,
+    "clarity": 0.886,
+    "emotion": 0.129,
+    "hook_strength": 0.878,
+    "information_density": 0.169,
+    "novelty": 0.298,
+    "quotability": 0.235,
+    "self_containedness": 0.529,
+    "tension": 0.863,
+    "topic_relevance": 0.302,
+    "visual_editability": 0.671
+   },
+   "expected": {
+    "final": 39.113,
+    "penalty": 12.535,
+    "raw": 51.648
+   },
+   "penalties": {
+    "brand_safety_risk": 0.06,
+    "context_dependency": 0.118,
+    "factual_risk": 0.066,
+    "overclaim_risk": 0.179,
+    "rights_risk": 0.124
+   }
+  }
+ ],
+ "scoring_version": "viral_score_v0.1.0",
+ "weights_version": "viral_v0.1.0"
+}

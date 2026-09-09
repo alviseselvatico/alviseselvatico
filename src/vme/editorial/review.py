@@ -22,6 +22,12 @@ from vme.domain.models import (
 )
 from vme.editorial.service import policy_for_candidate
 from vme.factcheck.gate import HUMAN_RESOLUTIONS, evaluate_claims
+from vme.labeling.taxonomy import (
+    ReasonTaxonomy,
+    UnknownReasonError,
+    load_taxonomy,
+    validate_reasons,
+)
 from vme.logs import get_logger
 from vme.rights.gate import Action, check
 from vme.storage.db import Store
@@ -137,10 +143,14 @@ def reject(
     reviewer: str,
     reason_codes: list[str],
     notes: str | None = None,
+    taxonomy: ReasonTaxonomy | None = None,
     now: datetime | None = None,
 ) -> ReviewOutcome:
     now = now or utc_now()
-    reasons = [r.strip() for r in reason_codes if r.strip()]
+    try:
+        reasons = validate_reasons(reason_codes, taxonomy or load_taxonomy(), note=notes)
+    except UnknownReasonError as exc:
+        raise ReviewError(str(exc)) from exc
     if not reasons:
         msg = "rejecting requires at least one reason code (labels are training data)"
         raise ReviewError(msg)

@@ -12,9 +12,11 @@ from vme.domain.models import utc_now
 from vme.logs import get_logger
 from vme.storage.migrations import MIGRATIONS
 from vme.storage.repositories import (
+    BenchmarkRepository,
     CandidateRepository,
     ClaimRepository,
     EditorialRepository,
+    LabelRepository,
     LlmCallRepository,
     MediaAssetRepository,
     RankingRepository,
@@ -103,6 +105,8 @@ class Store:
         self.claims = ClaimRepository(conn)
         self.reviews = ReviewEventRepository(conn)
         self.renders = RenderRepository(conn)
+        self.labels = LabelRepository(conn)
+        self.benchmarks = BenchmarkRepository(conn)
 
     @classmethod
     def open(cls, db_path: Path | str) -> Store:

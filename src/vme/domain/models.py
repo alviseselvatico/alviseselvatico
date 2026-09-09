@@ -669,3 +669,63 @@ class Render(_Entity):
     def _aware(cls, value: datetime) -> datetime:
         _require_aware(value, "created_at")
         return value
+
+
+# ------------------------------------------------------------ labels + benchmarks
+
+
+class LabelDecision(StrEnum):
+    APPROVE = "approve"
+    REJECT = "reject"
+
+
+class PerformanceBucket(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class Label(_Entity):
+    """Human judgement on a candidate (DATA_MODEL §3). Append-only; never edited."""
+
+    id: str = Field(min_length=1)
+    candidate_id: str = Field(min_length=1)
+    reviewer: str = Field(min_length=1)
+    decision: LabelDecision
+    boundary_correct: bool | None = None
+    hook_quality: int | None = Field(default=None, ge=1, le=5)
+    factual_risk: int | None = Field(default=None, ge=1, le=5)
+    rights_risk: int | None = Field(default=None, ge=1, le=5)
+    rejection_reasons: list[str] = Field(default_factory=list)
+    expected_performance: PerformanceBucket | None = None
+    edited_text: str | None = None
+    notes: str | None = None
+    taxonomy_version: str = Field(min_length=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "created_at")
+        return value
+
+
+class Benchmark(_Entity):
+    """Metrics of one ranking batch against labels, with every version that produced it."""
+
+    id: str = Field(min_length=1)
+    ranking_batch_id: str = Field(min_length=1)
+    transcript_id: str = Field(min_length=1)
+    scoring_version: str = Field(min_length=1)
+    weights_version: str = Field(min_length=1)
+    prompt_version: str = Field(min_length=1)
+    model_alias: str = Field(min_length=1)
+    n_labeled: int = Field(ge=1)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "created_at")
+        return value

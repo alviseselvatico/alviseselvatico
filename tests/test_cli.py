@@ -413,3 +413,115 @@ def test_pipeline_cli(db: Path, audio_wav: Path, monkeypatch: pytest.MonkeyPatch
     cids = {log["correlation_id"] for log in logs}
     assert len(cids) == 1  # one correlation id across all stages
     assert sum(1 for log in logs if log["event"] == "pipeline_stage") == 5
+
+
+@requires_ffmpeg
+def test_label_golden_bench_cli(
+    db: Path, audio_wav: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import vme.cli.main as cli
+
+    sentences = [
+        f"Sentence {i} shares a concrete market observation worth quoting." for i in range(12)
+    ]
+    monkeypatch.setattr(
+        cli, "build_transcriber", lambda _s: FakeSpeechToText(sentences, pause_ms=200)
+    )
+    monkeypatch.setattr(cli, "build_llm", lambda _s: FakeLlm())
+    monkeypatch.setenv("VME_REVIEWER", "op")
+    _vme("source", "add", "--id", "S001", "--uri", str(audio_wav))
+    _vme(
+        "policy",
+        "add",
+        "--source",
+        "S001",
+        "--basis",
+        "owned",
+        "--reference",
+        "r",
+        "--can-ingest",
+        "--can-extract-clip",
+        "--can-transform",
+    )
+    _, res, _ = _vme(
+        "pipeline",
+        "run",
+        "--source",
+        "S001",
+        "--path",
+        str(audio_wav),
+        "--top",
+        "1",
+        "--finalists",
+        "2",
+        "--seg-min-ms",
+        "4000",
+        "--seg-target-ms",
+        "6000",
+        "--seg-max-ms",
+        "9000",
+        "--min-ms",
+        "1000",
+        "--min-words",
+        "5",
+    )
+    batch = res["batch_id"]
+    _, shown, _ = _vme("ranking", "show", batch)
+    ordered = [r["candidate_id"] for r in shown["runs"]]
+
+    code, tax, _ = _vme("label", "taxonomy")
+    assert code == EXIT_OK and "weak_hook" in tax["codes"]
+    code, err, _ = _vme(
+        "label", "add", "--candidate", ordered[0], "--decision", "reject", "--reason", "meh"
+    )
+    assert code == EXIT_ERROR and err["error"] == "UnknownReasonError"
+    code, lb, _ = _vme(
+        "label",
+        "add",
+        "--candidate",
+        ordered[0],
+        "--decision",
+        "approve",
+        "--hook",
+        "5",
+        "--boundary-correct",
+        "--expected",
+        "high",
+        "--factual-risk",
+        "1",
+        "--rights-risk",
+        "1",
+    )
+    assert code == EXIT_OK and lb["reviewer"] == "op" and lb["boundary_correct"] is True
+    for cid in ordered[1:]:
+        code, _, _ = _vme(
+            "label",
+            "add",
+            "--candidate",
+            cid,
+            "--decision",
+            "reject",
+            "--reason",
+            "low_novelty,too_short",
+        )
+        assert code == EXIT_OK
+    code, listed, _ = _vme("label", "list", "--transcript", res["transcript_id"])
+    assert code == EXIT_OK and len(listed) == len(ordered)
+
+    out = tmp_path / "golden.jsonl"
+    code, exp, _ = _vme("golden", "export", "--out", str(out), "--batch", batch)
+    assert (
+        code == EXIT_OK
+        and exp["rows"] == len(ordered)
+        and exp["approved"] == 1
+        and exp["with_ranking_run"] == len(ordered)
+    )
+    assert len(out.read_text().splitlines()) == len(ordered)
+
+    code, bench, logs = _vme("bench", "run", "--batch", batch)
+    assert code == EXIT_OK and bench["metrics"]["precision_at_3"] == pytest.approx(1 / 3)
+    assert any(log["event"] == "benchmark_recorded" for log in logs)
+    code, benches, _ = _vme("bench", "list")
+    assert code == EXIT_OK and benches[0]["id"] == bench["id"]
+    code, cmp, _ = _vme("bench", "compare", bench["id"], bench["id"])
+    assert code == EXIT_OK and cmp["regressed"] is False and cmp["same_versions"] is True

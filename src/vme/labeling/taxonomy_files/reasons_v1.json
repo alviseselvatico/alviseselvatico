@@ -1,0 +1,20 @@
+{
+  "version": "reasons_v1",
+  "codes": {
+    "boundary_wrong":   "Cut starts or ends in the wrong place; a qualification or setup is lost",
+    "needs_context":    "Not understandable without earlier or later material",
+    "weak_hook":        "Opening does not earn attention",
+    "low_novelty":      "Nothing new, surprising or quotable",
+    "unclear":          "Muddled, rambling or hard to follow",
+    "off_topic":        "Outside the vertical or audience",
+    "factual_risk":     "Contains claims that are wrong, unverifiable or easily misread",
+    "overclaim":        "Editorial treatment strengthens an opinion or forecast into a fact",
+    "rights_risk":      "Rights basis or attribution is doubtful for this excerpt",
+    "brand_safety":     "Content unsuitable for the channel",
+    "too_long":         "Would not hold attention at this length",
+    "too_short":        "Not enough substance for a standalone clip",
+    "duplicate":        "Same moment as another candidate already kept",
+    "poor_audio":       "Audio quality or transcription errors make it unusable",
+    "other":            "Anything else; a note is required"
+  }
+}

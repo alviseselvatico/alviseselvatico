@@ -89,6 +89,12 @@ uv run vme render run --plan <plan_id>               # FFmpeg 1080x1920, letterb
 uv run vme render show <render_id>
 uv run vme pipeline run --source S001 --path /path/al/file.mp4 --top 3   # tutte le fasi automatiche in un colpo, fino alla review umana
 uv run vme report cost                               # spesa per stadio dai token registrati, costo per short approvato
+uv run vme label add --candidate <id> --decision approve --hook 4 --expected high --boundary-correct   # golden set (Phase 1)
+uv run vme label add --candidate <id> --decision reject --reason weak_hook,needs_context
+uv run vme label taxonomy                            # codici di rifiuto ammessi (reasons_v1)
+uv run vme golden export --out artifacts/golden.jsonl
+uv run vme bench run --batch <batch_id>              # precision@k, NDCG, pairwise agreement contro le etichette
+uv run vme bench compare <baseline_id> <candidate_id>   # delta e regressioni quando cambiano prompt o pesi
 ```
 
 Il render scrive `artifacts/render_plans/<plan_id>.json` e `artifacts/renders/<render_id>.mp4`.

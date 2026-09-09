@@ -133,6 +133,9 @@ Do not begin with a complex deep model. Start with interpretable baselines.
 - lift is repeatable;
 - model decisions remain inspectable enough for editorial use.
 
+### Acceptance test (operator decision, 2026-09-09 — D026)
+Once Phase 4 is complete, feed the engine macroeconomic long-form content (markets / macro vertical, heightened factual controls per PROJECT_BIBLE §4) and verify end to end that it produces a short ready for multi-channel publication: rights and claims cleared, render valid for each target platform's format, metadata and attribution reviewed. Adapters for platforms beyond YouTube remain Phase 5 work; the test checks the output, not the upload.
+
 ## Phase 5 — Scale / Multi-channel
 
 ### Goal
@@ -147,7 +150,9 @@ Potential:
 - autoscheduling with human guardrails;
 - per-channel budgets.
 
-## Phase 6 — B2B Creator Product
+## Phase 6 — B2B Creator Product (ancillary, last)
+
+Operator decision (2026-09-09, D026): Phases 6 and 7 are the last and ancillary phases of the roadmap. They start only after the internal engine has passed the Phase 4 acceptance test and Phase 5 has proven at least one repeatable format; they never gate earlier work.
 
 Only after internal engine works:
 - client-owned source connection;
@@ -159,7 +164,7 @@ Only after internal engine works:
 - permissions;
 - creator performance dashboard.
 
-## Phase 7 — Distribution Network / Marketplace
+## Phase 7 — Distribution Network / Marketplace (ancillary, last)
 
 Potential long-term:
 - creator-authorized clipping campaigns;
