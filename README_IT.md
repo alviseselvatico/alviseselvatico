@@ -40,6 +40,7 @@ Non chiedere a Claude di costruire subito l'intero sistema. Il prompt iniziale g
 
 - `CLAUDE.md` — istruzioni persistenti per Claude Code.
 - `PROJECT_MANIFEST.yaml` — sintesi machine-readable del progetto.
+- `docs/PIPELINE.md` — cosa fa davvero il codice oggi: stadi, output, costi misurati.
 - `docs/PROJECT_BIBLE.md` — visione completa, scope, prodotto e criteri di successo.
 - `docs/ARCHITECTURE.md` — architettura target e confini tra componenti.
 - `docs/DATA_MODEL_AND_METRICS.md` — schema logico, eventi, Viral Score e misure.
@@ -87,6 +88,7 @@ uv run vme render plan --draft <draft_id>            # RenderPlan deterministico
 uv run vme render run --plan <plan_id>               # FFmpeg 1080x1920, letterbox sfocato (D013), caption burn-in, validazione ffprobe + sha256
 uv run vme render show <render_id>
 uv run vme pipeline run --source S001 --path /path/al/file.mp4 --top 3   # tutte le fasi automatiche in un colpo, fino alla review umana
+uv run vme report cost                               # spesa per stadio dai token registrati, costo per short approvato
 ```
 
 Il render scrive `artifacts/render_plans/<plan_id>.json` e `artifacts/renders/<render_id>.mp4`.
