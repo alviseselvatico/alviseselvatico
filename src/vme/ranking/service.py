@@ -14,10 +14,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from vme.domain.models import (
+    TIER_RANK,
     Candidate,
     LlmCall,
     RankingBatch,
     RankingRun,
+    RankingTier,
     RightsPolicy,
     new_id,
     utc_now,
@@ -41,8 +43,8 @@ from vme.storage.repositories import NotFoundError
 
 log = get_logger("ranking")
 
-CHEAP = "cheap"
-STRONG = "strong"
+CHEAP = RankingTier.CHEAP.value
+STRONG = RankingTier.STRONG.value
 PURPOSE = "candidate_scoring"
 
 
@@ -81,7 +83,7 @@ class _Scored:
     call: LlmCall | None = None
     score: CandidateScore | None = None
     final: float = 0.0
-    tier: str = "prefilter"
+    tier: RankingTier = RankingTier.PREFILTER
     reason: str = ""
 
 
@@ -172,7 +174,12 @@ def rank_transcript(
         for entry in survivors:
             outcome, call, final = _score_one(llm, CHEAP, entry.candidate, config, weights, risk)
             calls.append(call)
-            entry.call, entry.score, entry.final, entry.tier = call, outcome.parsed, final, CHEAP
+            entry.call, entry.score, entry.final, entry.tier = (
+                call,
+                outcome.parsed,
+                final,
+                RankingTier.CHEAP,
+            )
             entry.reason = "" if outcome.ok else f"llm_failed: {outcome.error}"
             cheap_scored += 1
         ranked = sorted(
@@ -190,10 +197,15 @@ def rank_transcript(
         calls.append(call)
         strong_scored += 1
         if outcome.ok:
-            entry.call, entry.score, entry.final, entry.tier = call, outcome.parsed, final, STRONG
+            entry.call, entry.score, entry.final, entry.tier = (
+                call,
+                outcome.parsed,
+                final,
+                RankingTier.STRONG,
+            )
             entry.reason = ""
         elif entry.score is None:
-            entry.call, entry.tier = call, STRONG
+            entry.call, entry.tier = call, RankingTier.STRONG
             entry.reason = f"llm_failed: {outcome.error}"
         else:  # keep the cheap score but record the failed strong attempt in the rationale
             entry.reason = f"strong_failed_kept_cheap: {outcome.error}"
@@ -211,7 +223,7 @@ def rank_transcript(
     for entry in scored:
         if entry.score is not None:
             rationale = (
-                f"[{entry.tier}] {entry.score.why_it_might_work} | "
+                f"[{entry.tier.value}] {entry.score.why_it_might_work} | "
                 f"risks: {entry.score.why_it_might_fail}"
             )
             if entry.reason:
@@ -219,7 +231,7 @@ def rank_transcript(
             features = entry.score.components()
             risks = {**entry.score.llm_penalties(), RIGHTS_RISK: risk}
         else:
-            rationale = f"[{entry.tier}] {entry.reason}"
+            rationale = f"[{entry.tier.value}] {entry.reason}"
             features = {}
             risks = {RIGHTS_RISK: risk}
         runs.append(
@@ -227,6 +239,7 @@ def rank_transcript(
                 id=new_id("rkr"),
                 ranking_batch_id=batch.id,
                 candidate_id=entry.candidate.id,
+                tier=entry.tier,
                 features=features,
                 risks=risks,
                 final_score=entry.final,
@@ -235,7 +248,8 @@ def rank_transcript(
                 created_at=now,
             )
         )
-    runs.sort(key=lambda r: (-r.final_score, r.candidate_id))
+    # Tiers are not comparable: strong-scored finalists always rank above cheap-only runs.
+    runs.sort(key=lambda r: (TIER_RANK[r.tier], -r.final_score, r.candidate_id))
     with store.transaction():
         for call in calls:
             store.llm_calls.add(call)

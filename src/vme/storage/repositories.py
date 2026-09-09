@@ -565,15 +565,16 @@ class RankingRepository:
             self._conn.executemany(
                 """
                 INSERT INTO ranking_runs (
-                    id, ranking_batch_id, candidate_id, feature_json, risk_json, final_score,
-                    rationale, llm_call_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    id, ranking_batch_id, candidate_id, tier, feature_json, risk_json,
+                    final_score, rationale, llm_call_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
                         r.id,
                         r.ranking_batch_id,
                         r.candidate_id,
+                        r.tier.value,
                         json.dumps(r.features, sort_keys=True),
                         json.dumps(r.risks, sort_keys=True),
                         r.final_score,
@@ -591,8 +592,9 @@ class RankingRepository:
 
     def list_runs(self, batch_id: str) -> list[RankingRun]:
         rows = self._conn.execute(
-            "SELECT * FROM ranking_runs WHERE ranking_batch_id = ? "
-            "ORDER BY final_score DESC, candidate_id",
+            "SELECT * FROM ranking_runs WHERE ranking_batch_id = ? ORDER BY "
+            "CASE tier WHEN 'strong' THEN 0 WHEN 'cheap' THEN 1 ELSE 2 END, "
+            "final_score DESC, candidate_id",
             (batch_id,),
         )
         return [self._run(r) for r in rows.fetchall()]
@@ -615,6 +617,7 @@ class RankingRepository:
             id=row["id"],
             ranking_batch_id=row["ranking_batch_id"],
             candidate_id=row["candidate_id"],
+            tier=row["tier"],
             features=_FLOATS.validate_json(row["feature_json"]),
             risks=_FLOATS.validate_json(row["risk_json"]),
             final_score=row["final_score"],

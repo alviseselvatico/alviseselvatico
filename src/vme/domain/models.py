@@ -366,12 +366,30 @@ class RankingBatch(_Entity):
         return value
 
 
+class RankingTier(StrEnum):
+    """Which stage produced the decisive score. Tiers are not on a comparable scale."""
+
+    STRONG = "strong"
+    CHEAP = "cheap"
+    PREFILTER = "prefilter"
+
+
+#: Ordering of tiers in a ranking: strong-scored finalists always rank above candidates
+#: that only received a cheap-tier score, which rank above prefiltered ones.
+TIER_RANK: dict[RankingTier, int] = {
+    RankingTier.STRONG: 0,
+    RankingTier.CHEAP: 1,
+    RankingTier.PREFILTER: 2,
+}
+
+
 class RankingRun(_Entity):
     """Score of one candidate inside a batch. Components and penalties are persisted."""
 
     id: str = Field(min_length=1)
     ranking_batch_id: str = Field(min_length=1)
     candidate_id: str = Field(min_length=1)
+    tier: RankingTier = RankingTier.PREFILTER
     features: dict[str, float] = Field(default_factory=dict)
     risks: dict[str, float] = Field(default_factory=dict)
     final_score: float = Field(ge=0.0, le=100.0)

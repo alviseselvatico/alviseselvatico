@@ -20,7 +20,9 @@ def _unit(seed: str, salt: str) -> float:
 
 def score_for(text: str, *, boost: float = 0.0) -> CandidateScore:
     """Deterministic score derived from the excerpt text."""
-    data: dict[str, Any] = {name: min(1.0, _unit(text, name) + boost) for name in COMPONENTS}
+    data: dict[str, Any] = {
+        name: min(1.0, max(0.0, _unit(text, name) + boost)) for name in COMPONENTS
+    }
     data.update({name: _unit(text, name) * 0.3 for name in LLM_PENALTIES})
     data.update(
         recommended_start_ms=0,

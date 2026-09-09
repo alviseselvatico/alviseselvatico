@@ -7,7 +7,7 @@ import pytest
 from tests.conftest import NOW, make_policy, make_source, requires_ffmpeg
 from tests.fake_llm import FakeLlm
 from tests.fake_stt import FakeSpeechToText
-from vme.domain.models import BasisType, LlmValidationStatus
+from vme.domain.models import BasisType, LlmValidationStatus, RankingTier
 from vme.ingestion.register import register_local_media
 from vme.ranking.features import PrefilterConfig
 from vme.ranking.service import RankingConfig, RankingError, rank_transcript
@@ -150,3 +150,25 @@ def test_rank_is_gated_and_needs_candidates(
     with pytest.raises(RightsBlockedError):
         rank_transcript(store, tid, FakeLlm(), load_weights(), _cfg(), now=NOW)
     assert store.ranking.list_batches(tid) == []
+
+
+@requires_ffmpeg
+def test_strong_finalists_rank_above_cheap_even_with_lower_scores(
+    store: Store, audio_wav: Path, artifacts_dir: Path
+) -> None:
+    tid = _pipeline(store, audio_wav, artifacts_dir)
+    n = len(store.candidates.list(tid))
+    # strong tier scores LOWER than cheap: tiers are not on a comparable scale
+    llm = FakeLlm(strong_boost=-0.3)
+    result = rank_transcript(store, tid, llm, load_weights(), _cfg(finalists_k=2), now=NOW)
+    tiers = [r.tier for r in result.runs]
+    assert tiers[:2] == [RankingTier.STRONG, RankingTier.STRONG]
+    assert all(t is RankingTier.CHEAP for t in tiers[2:]) and len(tiers) == n
+    strong_scores = [r.final_score for r in result.runs[:2]]
+    cheap_scores = [r.final_score for r in result.runs[2:]]
+    assert max(strong_scores) < max(cheap_scores)  # the bug scenario from the first real run
+    # persisted order matches: tier first, then score
+    listed = store.ranking.list_runs(result.batch.id)
+    assert [r.id for r in listed] == [r.id for r in result.runs]
+    assert listed[0].tier is RankingTier.STRONG and listed[-1].tier is RankingTier.CHEAP
+    assert listed[0].rationale.startswith("[strong]")

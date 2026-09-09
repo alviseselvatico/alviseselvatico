@@ -229,4 +229,11 @@ MIGRATIONS: tuple[Migration, ...] = (
         CREATE INDEX renders_plan_idx ON renders(render_plan_id);
         """,
     ),
+    Migration(
+        version=6,
+        name="ranking_runs_tier",
+        sql="""
+        ALTER TABLE ranking_runs ADD COLUMN tier TEXT NOT NULL DEFAULT 'prefilter';
+        """,
+    ),
 )
