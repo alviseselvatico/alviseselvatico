@@ -1,6 +1,6 @@
 """``vme`` CLI: ``source``, ``policy``, ``media``, ``transcribe``, ``transcript``,
 ``segment``, ``candidate``, ``rank``, ``ranking``, ``llm``, ``editorial``, ``claim``,
-``review``, ``render``, ``db migrate``.
+``review``, ``render``, ``pipeline``, ``db migrate``.
 
 Every invocation gets a correlation id, logs JSON to stderr and prints one JSON document
 to stdout. Exit codes: 0 ok, 1 error, 2 usage, 3 blocked by the rights gate.
@@ -36,6 +36,7 @@ from vme.ingestion.probe import ProbeError
 from vme.ingestion.register import IngestionError, register_local_media
 from vme.llm.factory import build_llm
 from vme.logs import configure_logging, display_path, get_logger, new_correlation_id
+from vme.pipeline import PipelineConfig, run_pipeline
 from vme.ranking.features import PrefilterConfig
 from vme.ranking.service import RankingConfig, rank_transcript
 from vme.ranking.weights import load_weights
@@ -399,6 +400,64 @@ def cmd_render_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
     return store.renders.list_renders(args.plan)
 
 
+def cmd_pipeline_run(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    seg = SegmentationConfig(
+        **{
+            k: v
+            for k, v in {
+                "min_ms": args.seg_min_ms,
+                "target_ms": args.seg_target_ms,
+                "max_ms": args.seg_max_ms,
+            }.items()
+            if v is not None
+        }
+    )
+    defaults = PrefilterConfig()
+    prefilter = PrefilterConfig(
+        min_ms=args.min_ms if args.min_ms is not None else defaults.min_ms,
+        max_ms=args.max_ms if args.max_ms is not None else defaults.max_ms,
+        min_words=args.min_words if args.min_words is not None else defaults.min_words,
+    )
+    config = PipelineConfig(
+        top_k=args.top,
+        segmentation=seg,
+        prefilter=prefilter,
+        finalists_k=args.finalists or settings.ranking_finalists,
+        max_tokens=settings.llm_max_tokens,
+        vertical=args.vertical or settings.vertical,
+        audience=args.audience or settings.audience,
+        target_ms=args.target_ms or settings.target_clip_ms,
+        weights_path=settings.ranking_weights_path,
+    )
+    result = run_pipeline(
+        store,
+        source_id=args.source,
+        media_path=Path(args.path) if args.path else None,
+        media_id=args.media,
+        stt=build_transcriber(settings),
+        llm=build_llm(settings),
+        settings=settings,
+        config=config,
+    )
+    payload: dict[str, Any] = {
+        "ok": result.ok,
+        "media_id": result.media_id,
+        "transcript_id": result.transcript_id,
+        "candidates": len(result.candidate_ids),
+        "batch_id": result.batch_id,
+        "draft_ids": result.draft_ids,
+        "stages": [
+            {"stage": s.stage, "status": s.status, "detail": s.detail, **s.ids}
+            for s in result.stages
+        ],
+        "next": (
+            "review drafts: vme editorial show <draft_id>; vme claim resolve ...; "
+            "vme review approve ..."
+        ),
+    }
+    return payload
+
+
 Handler = Callable[[argparse.Namespace, Store, Settings], Any]
 
 
@@ -626,6 +685,31 @@ def build_parser() -> argparse.ArgumentParser:
     p = render.add_parser("list", help="list renders")
     p.add_argument("--plan")
     p.set_defaults(handler=cmd_render_list)
+
+    # pipeline
+    pipeline = sub.add_parser(
+        "pipeline", help="run the automated stages up to human review"
+    ).add_subparsers(dest="command", required=True)
+    p = pipeline.add_parser(
+        "run", help="register -> transcribe -> segment -> rank -> editorial(top-k)"
+    )
+    p.add_argument(
+        "--source", required=True, help="source id (policy must permit ingest/transform)"
+    )
+    p.add_argument("--path", help="local media file to register")
+    p.add_argument("--media", help="already registered media asset id (skips register)")
+    p.add_argument("--top", type=int, default=3, help="drafts to generate for the best candidates")
+    p.add_argument("--finalists", type=int)
+    p.add_argument("--seg-min-ms", type=int)
+    p.add_argument("--seg-target-ms", type=int)
+    p.add_argument("--seg-max-ms", type=int)
+    p.add_argument("--min-ms", type=int, help="prefilter minimum duration")
+    p.add_argument("--max-ms", type=int, help="prefilter maximum duration")
+    p.add_argument("--min-words", type=int)
+    p.add_argument("--vertical")
+    p.add_argument("--audience")
+    p.add_argument("--target-ms", type=int)
+    p.set_defaults(handler=cmd_pipeline_run)
     return parser
 
 

@@ -378,3 +378,38 @@ def test_render_cli(db: Path, video_mp4_10s: Path, monkeypatch: pytest.MonkeyPat
     assert code == EXIT_OK and shown["plan"]["id"] == plan["id"]
     code, listed, _ = _vme("render", "list", "--plan", plan["id"])
     assert code == EXIT_OK and [r["id"] for r in listed] == [render["id"]]
+
+
+@requires_ffmpeg
+def test_pipeline_cli(db: Path, audio_wav: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import vme.cli.main as cli
+
+    sentences = [
+        f"Sentence {i} shares a concrete market observation worth quoting." for i in range(12)
+    ]
+    monkeypatch.setattr(
+        cli, "build_transcriber", lambda _s: FakeSpeechToText(sentences, pause_ms=200)
+    )
+    monkeypatch.setattr(
+        cli, "build_llm", lambda _s: FakeLlm(editorial_claims=0, extractor_claims=1)
+    )
+    _vme("source", "add", "--id", "S001", "--uri", str(audio_wav))
+    _vme("policy", "add", "--source", "S001", "--basis", "owned", "--reference", "r",
+         "--can-ingest", "--can-extract-clip", "--can-transform")  # fmt: skip
+    code, res, logs = _vme(
+        "pipeline", "run", "--source", "S001", "--path", str(audio_wav), "--top", "2",
+        "--finalists", "2", "--seg-min-ms", "4000", "--seg-target-ms", "6000",
+        "--seg-max-ms", "9000", "--min-ms", "1000", "--min-words", "5",
+    )  # fmt: skip
+    assert code == EXIT_OK, res
+    assert res["ok"] and [s["stage"] for s in res["stages"]] == [
+        "register",
+        "transcribe",
+        "segment",
+        "rank",
+        "editorial",
+    ]
+    assert len(res["draft_ids"]) == 2 and res["candidates"] > 2
+    cids = {log["correlation_id"] for log in logs}
+    assert len(cids) == 1  # one correlation id across all stages
+    assert sum(1 for log in logs if log["event"] == "pipeline_stage") == 5
