@@ -112,7 +112,8 @@ def test_bounded_attempts_then_failed() -> None:
     llm = AnthropicStructuredLlm(models={"strong": "m"}, client=client, max_attempts=2)
     out = llm.generate("strong", REQ, CandidateScore)
     assert not out.ok and out.validation_status is LlmValidationStatus.FAILED and out.attempts == 2
-    assert out.error is not None and "schema validation failed" in out.error
+    assert out.error is not None and out.error.startswith("schema validation failed (")
+    assert "Field required" in out.error  # validator verdict is persisted, not just a count
     assert len(client.messages.outcomes) == 1  # third stub never consumed
 
 

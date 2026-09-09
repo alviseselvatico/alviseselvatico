@@ -28,7 +28,7 @@ class Settings(BaseSettings):
         default=SecretStr(""), validation_alias="ANTHROPIC_API_KEY"
     )
     llm_max_tokens: int = Field(default=8192, validation_alias="VME_LLM_MAX_TOKENS", ge=256)
-    llm_max_attempts: int = Field(default=2, validation_alias="VME_LLM_MAX_ATTEMPTS", ge=1, le=5)
+    llm_max_attempts: int = Field(default=3, validation_alias="VME_LLM_MAX_ATTEMPTS", ge=1, le=5)
     llm_effort: str = Field(default="", validation_alias="VME_LLM_EFFORT")
 
     # --- Ranking (Viral Score v0)

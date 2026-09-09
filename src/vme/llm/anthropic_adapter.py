@@ -90,8 +90,17 @@ class AnthropicStructuredLlm:
         model_reported: str | None = None
         in_tok: int | None = None
         out_tok: int | None = None
+        feedback: str | None = None
         while attempts < self._max_attempts:
             attempts += 1
+            user = request.user
+            if feedback:
+                # Bounded retry with the validator's verdict: the model can fix what was wrong.
+                user = (
+                    f"{request.user}\n\nCORRECTION REQUIRED - your previous answer was "
+                    f"rejected:\n{feedback}\nReturn the full corrected answer."
+                )
+            kwargs["messages"] = [{"role": "user", "content": user}]
             try:
                 response = client.messages.parse(**kwargs)
             except (anthropic.APIStatusError, anthropic.APIConnectionError) as exc:
@@ -99,8 +108,15 @@ class AnthropicStructuredLlm:
                 last_error = f"{type(exc).__name__}: {exc}"
                 break
             except ValidationError as exc:
-                last_error = f"schema validation failed: {exc.error_count()} error(s)"
-                log.warning("llm_invalid_structure", extra={"alias": alias, "attempt": attempts})
+                messages = sorted({str(e.get("msg", "")) for e in exc.errors()})
+                feedback = "\n".join(f"- {m}" for m in messages)
+                last_error = (
+                    f"schema validation failed ({exc.error_count()}): {'; '.join(messages)}"
+                )
+                log.warning(
+                    "llm_invalid_structure",
+                    extra={"alias": alias, "attempt": attempts, "errors": messages},
+                )
                 continue
             model_reported = getattr(response, "model", None)
             usage = getattr(response, "usage", None)
