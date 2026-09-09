@@ -1,6 +1,6 @@
 """``vme`` CLI: ``source``, ``policy``, ``media``, ``transcribe``, ``transcript``,
 ``segment``, ``candidate``, ``rank``, ``ranking``, ``llm``, ``editorial``, ``claim``,
-``review``, ``render``, ``pipeline``, ``db migrate``.
+``review``, ``render``, ``pipeline``, ``report``, ``db migrate``.
 
 Every invocation gets a correlation id, logs JSON to stderr and prints one JSON document
 to stdout. Exit codes: 0 ok, 1 error, 2 usage, 3 blocked by the rights gate.
@@ -43,6 +43,7 @@ from vme.ranking.weights import load_weights
 from vme.rendering.ffmpeg import RenderSettings, find_font
 from vme.rendering.plan import PlanConfig, build_render_plan
 from vme.rendering.service import render_plan_to_file
+from vme.reporting.cost import build_cost_report, load_prices
 from vme.rights.gate import Action, RightsBlockedError, check
 from vme.segmentation.segmenter import SegmentationConfig
 from vme.segmentation.service import segment_and_store
@@ -458,6 +459,42 @@ def cmd_pipeline_run(args: argparse.Namespace, store: Store, settings: Settings)
     return payload
 
 
+def cmd_report_cost(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    prices = load_prices(Path(args.prices) if args.prices else settings.pricing_path)
+    report = build_cost_report(store, prices)
+    return {
+        "prices_version": report.prices_version,
+        "currency": report.currency,
+        "total_cost": report.total_cost_usd,
+        "is_lower_bound": report.is_lower_bound,
+        "unmetered_attempts": report.unmetered_attempts,
+        "wasted_cost": report.wasted_cost_usd,
+        "total_calls": report.total_calls,
+        "total_input_tokens": report.total_input_tokens,
+        "total_output_tokens": report.total_output_tokens,
+        "unpriced_models": report.unpriced_models,
+        "counts": report.counts,
+        "cost_per_approved_short": report.per_unit("approved_drafts"),
+        "cost_per_render": report.per_unit("renders"),
+        "stages": [
+            {
+                "purpose": s.purpose,
+                "model_alias": s.model_alias,
+                "model_id": s.model_id,
+                "calls": s.calls,
+                "failed": s.failed_calls,
+                "retried": s.retried_calls,
+                "input_tokens": s.input_tokens,
+                "output_tokens": s.output_tokens,
+                "avg_latency_ms": s.avg_latency_ms,
+                "unmetered_attempts": s.unmetered_attempts,
+                "cost": s.cost_usd,
+            }
+            for s in report.stages
+        ],
+    }
+
+
 Handler = Callable[[argparse.Namespace, Store, Settings], Any]
 
 
@@ -710,6 +747,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--audience")
     p.add_argument("--target-ms", type=int)
     p.set_defaults(handler=cmd_pipeline_run)
+
+    # report
+    report = sub.add_parser(
+        "report", help="operational reporting over stored artifacts"
+    ).add_subparsers(dest="command", required=True)
+    p = report.add_parser("cost", help="LLM spend per stage from recorded token usage")
+    p.add_argument("--prices", help="price list JSON (default: packaged anthropic_v1)")
+    p.set_defaults(handler=cmd_report_cost)
     return parser
 
 

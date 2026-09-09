@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     ranking_weights_path: Path | None = Field(
         default=None, validation_alias="VME_RANKING_WEIGHTS_PATH"
     )
+    pricing_path: Path | None = Field(default=None, validation_alias="VME_PRICING_PATH")
     vertical: str = Field(default="general", validation_alias="VME_VERTICAL")
     audience: str = Field(
         default="general English-speaking short-form viewers", validation_alias="VME_AUDIENCE"
