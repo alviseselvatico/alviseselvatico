@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from vme.domain.models import LlmValidationStatus
+from vme.editorial.schemas import ClaimExtraction, EditorialDraft
 from vme.llm.base import LlmOutcome, LlmRequest
 from vme.ranking.schemas import COMPONENTS, LLM_PENALTIES, CandidateScore
 
@@ -38,10 +39,16 @@ class FakeLlm:
         *,
         fail_alias: str | None = None,
         strong_boost: float = 0.2,
+        editorial_claims: int = 1,
+        extractor_claims: int = 1,
+        fail_prompt: str | None = None,
     ) -> None:
         self.aliases = set(aliases)
         self.fail_alias = fail_alias
         self.strong_boost = strong_boost
+        self.editorial_claims = editorial_claims
+        self.extractor_claims = extractor_claims
+        self.fail_prompt = fail_prompt
         self.calls: list[tuple[str, LlmRequest]] = []
 
     @property
@@ -54,9 +61,8 @@ class FakeLlm:
     def generate[T: BaseModel](
         self, alias: str, request: LlmRequest, schema: type[T]
     ) -> LlmOutcome[T]:
-        assert schema is CandidateScore
         self.calls.append((alias, request))
-        if alias == self.fail_alias:
+        if alias == self.fail_alias or request.prompt_name == self.fail_prompt:
             return LlmOutcome(
                 provider="fake",
                 model_alias=alias,
@@ -71,8 +77,57 @@ class FakeLlm:
                 parameters={"max_tokens": request.max_tokens},
                 error="simulated failure",
             )
-        excerpt = request.user.split("EXCERPT:\n", 1)[1].split("\n\nContext after", 1)[0]
-        parsed: Any = score_for(excerpt, boost=self.strong_boost if alias == "strong" else 0.0)
+        parsed: Any
+        if schema is CandidateScore:
+            excerpt = request.user.split("EXCERPT:\n", 1)[1].split("\n\nContext after", 1)[0]
+            parsed = score_for(excerpt, boost=self.strong_boost if alias == "strong" else 0.0)
+        elif schema is EditorialDraft:
+            rng = request.user.split("Excerpt range: ", 1)[1].split("\n", 1)[0]
+            start, end = (int(x.split()[0]) for x in rng.split(" - "))
+            parsed = EditorialDraft.model_validate(
+                {
+                    "hook": "Why this moment matters more than it sounds",
+                    "commentary_before": (
+                        "The speaker frames a personal view here, not a company forecast."
+                    ),
+                    "source_excerpt_plan": [
+                        {"start_ms": start, "end_ms": end, "purpose": "core statement"}
+                    ],
+                    "commentary_after": "Context: this was said before the 2026 results were out.",
+                    "title_options": ["The line everyone missed", "A personal view, not guidance"],
+                    "cta": None,
+                    "generated_claims": [
+                        {
+                            "text": f"This was said before the 2026 results were out ({i})",
+                            "type": "FACT",
+                            "importance": "HIGH",
+                            "verification_required": True,
+                        }
+                        for i in range(self.editorial_claims)
+                    ],
+                    "transformation_summary": (
+                        "Added timing context and reframed the opinion as opinion."
+                    ),
+                }
+            )
+        elif schema is ClaimExtraction:
+            parsed = ClaimExtraction.model_validate(
+                {
+                    "claims": [
+                        {
+                            "text": "This was said before the 2026 results were out (0)"
+                            if i == 0
+                            else f"Extractor-only claim {i}",
+                            "type": "FACT",
+                            "importance": "MEDIUM",
+                            "verification_required": True,
+                        }
+                        for i in range(self.extractor_claims)
+                    ]
+                }
+            )
+        else:  # pragma: no cover
+            raise AssertionError(f"unexpected schema {schema}")
         return LlmOutcome(
             provider="fake",
             model_alias=alias,

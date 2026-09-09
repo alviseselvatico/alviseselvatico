@@ -145,10 +145,12 @@ Required by ARCHITECTURE §6. One row per LLM invocation that influences an outp
 - `candidate_id`
 - `version`
 - `hook`
-- `commentary`
-- `title`
+- `commentary_before`, `commentary_after` (contract §2; implemented instead of a single `commentary`)
+- `excerpt_plan` — ordered source spans shown in the clip
+- `title`, `title_options`
 - `cta`
-- `claims_json`
+- `transformation_summary`
+- claims: rows in the `Claim` table (implemented instead of `claims_json`, see D022)
 - `status` — see draft state machine below
 - `prompt_version`
 - `model_alias`

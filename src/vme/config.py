@@ -41,6 +41,10 @@ class Settings(BaseSettings):
         default="general English-speaking short-form viewers", validation_alias="VME_AUDIENCE"
     )
 
+    # --- Editorial / review
+    target_clip_ms: int = Field(default=45_000, validation_alias="VME_TARGET_CLIP_MS", ge=1000)
+    reviewer: str = Field(default="", validation_alias="VME_REVIEWER")
+
     # --- Transcription (D011)
     stt_provider: str = Field(default="faster_whisper", validation_alias="VME_STT_PROVIDER")
     stt_model_size: str = Field(default="small", validation_alias="VME_STT_MODEL_SIZE")

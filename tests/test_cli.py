@@ -249,3 +249,87 @@ def test_rank_without_models_configured_is_visible_error(
     monkeypatch.delenv("VME_LLM_MODEL_STRONG", raising=False)
     code, payload, _ = _vme("rank", "--transcript", "ghost")
     assert code == EXIT_ERROR and payload["error"] == "NotFoundError"
+
+
+@requires_ffmpeg
+def test_editorial_and_review_cli(
+    db: Path, audio_wav: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import vme.cli.main as cli
+
+    sentences = [
+        f"Sentence {i} explains a market idea with enough words to pass." for i in range(6)
+    ]
+    monkeypatch.setattr(
+        cli, "build_transcriber", lambda _s: FakeSpeechToText(sentences, pause_ms=200)
+    )
+    monkeypatch.setattr(
+        cli, "build_llm", lambda _s: FakeLlm(editorial_claims=1, extractor_claims=1)
+    )
+    monkeypatch.setenv("VME_REVIEWER", "operator-1")
+    _vme("source", "add", "--id", "S001", "--uri", str(audio_wav))
+    _vme("policy", "add", "--source", "S001", "--basis", "owned", "--reference", "r",
+         "--can-ingest", "--can-extract-clip", "--can-transform")  # fmt: skip
+    _, asset, _ = _vme("media", "register", "--source", "S001", str(audio_wav))
+    _, transcript, _ = _vme("transcribe", "--media", asset["id"])
+    _, cands, _ = _vme("segment", "--transcript", transcript["id"], "--min-ms", "4000",
+                       "--target-ms", "8000", "--max-ms", "12000")  # fmt: skip
+
+    code, gen, logs = _vme(
+        "editorial", "generate", "--candidate", cands[0]["id"], "--target-ms", "30000"
+    )
+    assert code == EXIT_OK, gen
+    assert gen["draft"]["status"] == "blocked_factcheck" and len(gen["claims"]) == 1
+    assert any(log["event"] == "editorial_generated" for log in logs)
+    draft_id = gen["draft"]["id"]
+
+    code, res, _ = _vme("review", "approve", draft_id)
+    assert code == EXIT_ERROR and res["error"] == "ReviewError"
+
+    code, res, _ = _vme(
+        "claim", "resolve", gen["claims"][0]["id"], "--status", "human-approved", "--note", "ok"
+    )
+    assert code == EXIT_OK and res["draft_status"] == "needs_review"
+    assert res["event"]["reviewer"] == "operator-1"
+
+    code, shown, _ = _vme("editorial", "show", draft_id)
+    assert code == EXIT_OK and shown["draft"]["status"] == "needs_review"
+    assert [e["decision"] for e in shown["events"]] == ["factcheck_cleared"]
+
+    code, res, _ = _vme("review", "approve", draft_id, "--reviewer", "operator-2")
+    assert (
+        code == EXIT_OK
+        and res["draft"]["status"] == "approved"
+        and res["event"]["reviewer"] == "operator-2"
+    )
+    code, events, _ = _vme(
+        "review", "events", "--object-type", "editorial_version", "--object-id", draft_id
+    )
+    assert code == EXIT_OK and [e["decision"] for e in events] == ["factcheck_cleared", "approve"]
+    code, listed, _ = _vme("editorial", "list", "--candidate", cands[0]["id"])
+    assert code == EXIT_OK and [d["id"] for d in listed] == [draft_id]
+
+    # second draft rejected with reasons
+    _, gen2, _ = _vme("editorial", "generate", "--candidate", cands[0]["id"])
+    _vme("claim", "resolve", gen2["claims"][0]["id"], "--status", "removed")
+    code, res, _ = _vme(
+        "review",
+        "reject",
+        gen2["draft"]["id"],
+        "--reason",
+        "weak_hook,off_topic",
+        "--reason",
+        "too_long",
+    )
+    assert code == EXIT_OK and res["event"]["reason_codes"] == [
+        "weak_hook",
+        "off_topic",
+        "too_long",
+    ]
+    code, res, _ = _vme("review", "recheck", gen2["draft"]["id"])
+    assert code == EXIT_OK and res["changed"] is False
+
+    # reviewer identity is mandatory
+    monkeypatch.delenv("VME_REVIEWER")
+    code, res, _ = _vme("claim", "resolve", gen2["claims"][0]["id"], "--status", "removed")
+    assert code == EXIT_ERROR and res["error"] == "ReviewError"

@@ -13,9 +13,12 @@ from vme.logs import get_logger
 from vme.storage.migrations import MIGRATIONS
 from vme.storage.repositories import (
     CandidateRepository,
+    ClaimRepository,
+    EditorialRepository,
     LlmCallRepository,
     MediaAssetRepository,
     RankingRepository,
+    ReviewEventRepository,
     RightsPolicyRepository,
     SourceRepository,
     TranscriptRepository,
@@ -95,6 +98,9 @@ class Store:
         self.candidates = CandidateRepository(conn)
         self.llm_calls = LlmCallRepository(conn)
         self.ranking = RankingRepository(conn)
+        self.editorial = EditorialRepository(conn)
+        self.claims = ClaimRepository(conn)
+        self.reviews = ReviewEventRepository(conn)
 
     @classmethod
     def open(cls, db_path: Path | str) -> Store:

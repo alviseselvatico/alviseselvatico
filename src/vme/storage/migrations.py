@@ -148,4 +148,56 @@ MIGRATIONS: tuple[Migration, ...] = (
         );
         """,
     ),
+    Migration(
+        version=4,
+        name="phase0_editorial_claims_reviews",
+        sql="""
+        CREATE TABLE editorial_versions (
+            id                     TEXT PRIMARY KEY,
+            candidate_id           TEXT    NOT NULL REFERENCES candidates(id),
+            version                INTEGER NOT NULL,
+            hook                   TEXT    NOT NULL,
+            commentary_before      TEXT    NOT NULL,
+            commentary_after       TEXT    NOT NULL,
+            excerpt_plan_json      TEXT    NOT NULL,
+            title                  TEXT    NOT NULL,
+            title_options_json     TEXT    NOT NULL,
+            cta                    TEXT,
+            transformation_summary TEXT    NOT NULL,
+            status                 TEXT    NOT NULL,
+            prompt_version         TEXT    NOT NULL,
+            model_alias            TEXT    NOT NULL,
+            llm_call_id            TEXT    REFERENCES llm_calls(id),
+            created_at             TEXT    NOT NULL,
+            UNIQUE (candidate_id, version)
+        );
+
+        CREATE TABLE claims (
+            id                   TEXT PRIMARY KEY,
+            editorial_version_id TEXT NOT NULL REFERENCES editorial_versions(id),
+            claim_text           TEXT NOT NULL,
+            claim_type           TEXT NOT NULL,
+            importance           TEXT NOT NULL,
+            evidence_refs_json   TEXT NOT NULL,
+            confidence           REAL,
+            status               TEXT NOT NULL,
+            reviewer_note        TEXT,
+            origin               TEXT NOT NULL,
+            created_at           TEXT NOT NULL
+        );
+        CREATE INDEX claims_version_idx ON claims(editorial_version_id);
+
+        CREATE TABLE review_events (
+            id                TEXT PRIMARY KEY,
+            object_type       TEXT NOT NULL,
+            object_id         TEXT NOT NULL,
+            decision          TEXT NOT NULL,
+            reason_codes_json TEXT NOT NULL,
+            notes             TEXT,
+            reviewer          TEXT NOT NULL,
+            created_at        TEXT NOT NULL
+        );
+        CREATE INDEX review_events_object_idx ON review_events(object_type, object_id, created_at);
+        """,
+    ),
 )

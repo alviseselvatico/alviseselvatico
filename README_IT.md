@@ -78,7 +78,15 @@ uv run vme candidate list --transcript <transcript_id>
 uv run vme rank --transcript <transcript_id>        # funnel: prefilter -> cheap -> strong (richiede VME_LLM_MODEL_*)
 uv run vme ranking show <batch_id>                   # run ordinati per punteggio, componenti e penalità persistiti
 uv run vme llm show <llm_call_id>                    # ogni chiamata LLM: prompt version, modello riportato, token, risposta
+uv run vme editorial generate --candidate <candidate_id>   # draft testuale + claim (nascono UNVERIFIED, D010)
+uv run vme claim resolve <claim_id> --status human-approved|removed --reviewer <nome>
+uv run vme review approve <draft_id> --reviewer <nome>     # ricontrolla diritti e claim al momento della decisione
+uv run vme review reject <draft_id> --reason weak_hook,off_topic --reviewer <nome>
+uv run vme review events --object-type editorial_version --object-id <draft_id>   # audit log
 ```
+
+Stati del draft: `generated -> blocked_factcheck | needs_review -> approved | rejected | blocked_rights`;
+`VME_REVIEWER` evita di ripetere `--reviewer`.
 
 Il ranking usa i pesi versionati in `src/vme/ranking/weight_files/viral_v0.json`
 (`VME_RANKING_WEIGHTS_PATH` per un file alternativo) e gli alias `cheap`/`strong` risolti da

@@ -384,3 +384,163 @@ class RankingRun(_Entity):
     def _aware(cls, value: datetime) -> datetime:
         _require_aware(value, "created_at")
         return value
+
+
+# ------------------------------------------------------------ editorial + fact check
+
+
+class DraftStatus(StrEnum):
+    GENERATED = "generated"
+    NEEDS_REVIEW = "needs_review"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    BLOCKED_RIGHTS = "blocked_rights"
+    BLOCKED_FACTCHECK = "blocked_factcheck"
+    PUBLISHED = "published"
+    RETIRED = "retired"
+
+
+#: Allowed transitions (DATA_MODEL §1, draft state machine). ``published`` is Phase 3+.
+DRAFT_TRANSITIONS: dict[DraftStatus, frozenset[DraftStatus]] = {
+    DraftStatus.GENERATED: frozenset({DraftStatus.NEEDS_REVIEW, DraftStatus.BLOCKED_FACTCHECK}),
+    DraftStatus.NEEDS_REVIEW: frozenset(
+        {
+            DraftStatus.APPROVED,
+            DraftStatus.REJECTED,
+            DraftStatus.BLOCKED_RIGHTS,
+            DraftStatus.BLOCKED_FACTCHECK,
+        }
+    ),
+    DraftStatus.BLOCKED_FACTCHECK: frozenset({DraftStatus.NEEDS_REVIEW}),
+    DraftStatus.BLOCKED_RIGHTS: frozenset({DraftStatus.NEEDS_REVIEW}),
+    DraftStatus.APPROVED: frozenset({DraftStatus.PUBLISHED, DraftStatus.RETIRED}),
+    DraftStatus.PUBLISHED: frozenset({DraftStatus.RETIRED}),
+    DraftStatus.REJECTED: frozenset(),
+    DraftStatus.RETIRED: frozenset(),
+}
+
+
+class InvalidTransitionError(ValueError):
+    pass
+
+
+def check_transition(current: DraftStatus, new: DraftStatus) -> None:
+    if new not in DRAFT_TRANSITIONS[current]:
+        msg = f"draft transition {current.value} -> {new.value} is not allowed"
+        raise InvalidTransitionError(msg)
+
+
+class ClaimType(StrEnum):
+    FACT = "FACT"
+    OPINION_ATTRIBUTION = "OPINION_ATTRIBUTION"
+    FORECAST = "FORECAST"
+    ESTIMATE = "ESTIMATE"
+    GUIDANCE = "GUIDANCE"
+    ALLEGATION = "ALLEGATION"
+    HYPOTHETICAL = "HYPOTHETICAL"
+
+
+class ClaimImportance(StrEnum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+
+class ClaimStatus(StrEnum):
+    UNVERIFIED = "UNVERIFIED"
+    SUPPORTED = "SUPPORTED"
+    CONTRADICTED = "CONTRADICTED"
+    AMBIGUOUS = "AMBIGUOUS"
+    HUMAN_APPROVED = "HUMAN_APPROVED"
+    REMOVED = "REMOVED"
+
+
+#: Claim states that keep a draft in ``blocked_factcheck`` (DATA_MODEL state machine).
+BLOCKING_CLAIM_STATUSES: frozenset[ClaimStatus] = frozenset(
+    {ClaimStatus.UNVERIFIED, ClaimStatus.CONTRADICTED, ClaimStatus.AMBIGUOUS}
+)
+
+
+class ExcerptSpan(_Entity):
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(ge=0)
+    purpose: str = ""
+
+    @model_validator(mode="after")
+    def _ordered(self) -> ExcerptSpan:
+        if self.end_ms <= self.start_ms:
+            msg = "excerpt span end_ms must be > start_ms"
+            raise ValueError(msg)
+        return self
+
+
+class EditorialVersion(_Entity):
+    """One generated draft for a candidate. Immutable text; only ``status`` moves."""
+
+    id: str = Field(min_length=1)
+    candidate_id: str = Field(min_length=1)
+    version: int = Field(ge=1)
+    hook: str
+    commentary_before: str
+    commentary_after: str
+    excerpt_plan: list[ExcerptSpan] = Field(default_factory=list)
+    title: str
+    title_options: list[str] = Field(default_factory=list)
+    cta: str | None = None
+    transformation_summary: str
+    status: DraftStatus
+    prompt_version: str = Field(min_length=1)
+    model_alias: str = Field(min_length=1)
+    llm_call_id: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "created_at")
+        return value
+
+
+class Claim(_Entity):
+    """A factual proposition introduced or materially restated by VME (D010)."""
+
+    id: str = Field(min_length=1)
+    editorial_version_id: str = Field(min_length=1)
+    claim_text: str = Field(min_length=1)
+    claim_type: ClaimType
+    importance: ClaimImportance = ClaimImportance.MEDIUM
+    evidence_refs: list[str] = Field(default_factory=list)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    status: ClaimStatus = ClaimStatus.UNVERIFIED
+    reviewer_note: str | None = None
+    origin: str = Field(min_length=1, description="which prompt produced it")
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "created_at")
+        return value
+
+    @property
+    def blocking(self) -> bool:
+        return self.status in BLOCKING_CLAIM_STATUSES
+
+
+class ReviewEvent(_Entity):
+    """Audit log of a human or system decision about an object (never the state itself)."""
+
+    id: str = Field(min_length=1)
+    object_type: str = Field(min_length=1)
+    object_id: str = Field(min_length=1)
+    decision: str = Field(min_length=1)
+    reason_codes: list[str] = Field(default_factory=list)
+    notes: str | None = None
+    reviewer: str = Field(min_length=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "created_at")
+        return value

@@ -11,10 +11,16 @@ from pydantic import TypeAdapter
 
 from vme.domain.models import (
     Candidate,
+    Claim,
+    ClaimStatus,
+    DraftStatus,
+    EditorialVersion,
+    ExcerptSpan,
     LlmCall,
     MediaAsset,
     RankingBatch,
     RankingRun,
+    ReviewEvent,
     RightsPolicy,
     Source,
     SourceStatus,
@@ -27,6 +33,7 @@ _SEGMENTS = TypeAdapter(list[TranscriptSegment])
 _STR_LIST = TypeAdapter(list[str])
 _FLOATS = TypeAdapter(dict[str, float])
 _JSON_OBJ = TypeAdapter(dict[str, Any])
+_SPANS = TypeAdapter(list[ExcerptSpan])
 
 
 class NotFoundError(LookupError):
@@ -148,7 +155,7 @@ class SourceRepository:
         return self._to_model(row)
 
     def list(self) -> list[Source]:
-        rows = self._conn.execute("SELECT * FROM sources ORDER BY created_at, id").fetchall()
+        rows = self._conn.execute("SELECT * FROM sources ORDER BY created_at, rowid").fetchall()
         return [self._to_model(r) for r in rows]
 
     def attach_policy(self, source_id: str, policy_id: str) -> Source:
@@ -233,10 +240,10 @@ class MediaAssetRepository:
 
     def list(self, source_id: str | None = None) -> list[MediaAsset]:
         if source_id is None:
-            rows = self._conn.execute("SELECT * FROM media_assets ORDER BY ingested_at, id")
+            rows = self._conn.execute("SELECT * FROM media_assets ORDER BY ingested_at, rowid")
         else:
             rows = self._conn.execute(
-                "SELECT * FROM media_assets WHERE source_id = ? ORDER BY ingested_at, id",
+                "SELECT * FROM media_assets WHERE source_id = ? ORDER BY ingested_at, rowid",
                 (source_id,),
             )
         return [self._to_model(r) for r in rows.fetchall()]
@@ -312,7 +319,7 @@ class TranscriptRepository:
 
     def list(self, media_asset_id: str | None = None) -> list[Transcript]:
         if media_asset_id is None:
-            rows = self._conn.execute("SELECT * FROM transcripts ORDER BY created_at, id")
+            rows = self._conn.execute("SELECT * FROM transcripts ORDER BY created_at, rowid")
         else:
             rows = self._conn.execute(
                 "SELECT * FROM transcripts WHERE media_asset_id = ? ORDER BY kind, version",
@@ -465,10 +472,10 @@ class LlmCallRepository:
 
     def list(self, purpose: str | None = None) -> list[LlmCall]:
         if purpose is None:
-            rows = self._conn.execute("SELECT * FROM llm_calls ORDER BY created_at, id")
+            rows = self._conn.execute("SELECT * FROM llm_calls ORDER BY created_at, rowid")
         else:
             rows = self._conn.execute(
-                "SELECT * FROM llm_calls WHERE purpose = ? ORDER BY created_at, id", (purpose,)
+                "SELECT * FROM llm_calls WHERE purpose = ? ORDER BY created_at, rowid", (purpose,)
             )
         return [self._to_model(r) for r in rows.fetchall()]
 
@@ -539,10 +546,10 @@ class RankingRepository:
 
     def list_batches(self, transcript_id: str | None = None) -> list[RankingBatch]:
         if transcript_id is None:
-            rows = self._conn.execute("SELECT * FROM ranking_batches ORDER BY created_at, id")
+            rows = self._conn.execute("SELECT * FROM ranking_batches ORDER BY created_at, rowid")
         else:
             rows = self._conn.execute(
-                "SELECT * FROM ranking_batches WHERE transcript_id = ? ORDER BY created_at, id",
+                "SELECT * FROM ranking_batches WHERE transcript_id = ? ORDER BY created_at, rowid",
                 (transcript_id,),
             )
         return [self._batch(r) for r in rows.fetchall()]
@@ -607,6 +614,233 @@ class RankingRepository:
             final_score=row["final_score"],
             rationale=row["rationale"],
             llm_call_id=row["llm_call_id"],
+            created_at=_dt(row["created_at"]) or _fail("created_at"),
+        )
+
+
+class EditorialRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def next_version(self, candidate_id: str) -> int:
+        row = self._conn.execute(
+            "SELECT COALESCE(MAX(version), 0) FROM editorial_versions WHERE candidate_id = ?",
+            (candidate_id,),
+        ).fetchone()
+        return int(row[0]) + 1
+
+    def add(self, draft: EditorialVersion) -> EditorialVersion:
+        try:
+            self._conn.execute(
+                """
+                INSERT INTO editorial_versions (
+                    id, candidate_id, version, hook, commentary_before, commentary_after,
+                    excerpt_plan_json, title, title_options_json, cta, transformation_summary,
+                    status, prompt_version, model_alias, llm_call_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    draft.id,
+                    draft.candidate_id,
+                    draft.version,
+                    draft.hook,
+                    draft.commentary_before,
+                    draft.commentary_after,
+                    _SPANS.dump_json(draft.excerpt_plan).decode("utf-8"),
+                    draft.title,
+                    json.dumps(draft.title_options),
+                    draft.cta,
+                    draft.transformation_summary,
+                    draft.status.value,
+                    draft.prompt_version,
+                    draft.model_alias,
+                    draft.llm_call_id,
+                    _iso(draft.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = f"editorial version {draft.id!r} duplicate or candidate/llm_call missing"
+            raise DuplicateRecordError(msg) from exc
+        return draft
+
+    def get(self, draft_id: str) -> EditorialVersion:
+        row = self._conn.execute(
+            "SELECT * FROM editorial_versions WHERE id = ?", (draft_id,)
+        ).fetchone()
+        if row is None:
+            msg = f"editorial version {draft_id!r} not found"
+            raise NotFoundError(msg)
+        return self._to_model(row)
+
+    def list(self, candidate_id: str | None = None) -> list[EditorialVersion]:
+        if candidate_id is None:
+            rows = self._conn.execute("SELECT * FROM editorial_versions ORDER BY created_at, rowid")
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM editorial_versions WHERE candidate_id = ? ORDER BY version",
+                (candidate_id,),
+            )
+        return [self._to_model(r) for r in rows.fetchall()]
+
+    def set_status(self, draft_id: str, status: DraftStatus) -> EditorialVersion:
+        cur = self._conn.execute(
+            "UPDATE editorial_versions SET status = ? WHERE id = ?", (status.value, draft_id)
+        )
+        if cur.rowcount != 1:
+            msg = f"editorial version {draft_id!r} not found"
+            raise NotFoundError(msg)
+        return self.get(draft_id)
+
+    @staticmethod
+    def _to_model(row: sqlite3.Row) -> EditorialVersion:
+        return EditorialVersion(
+            id=row["id"],
+            candidate_id=row["candidate_id"],
+            version=row["version"],
+            hook=row["hook"],
+            commentary_before=row["commentary_before"],
+            commentary_after=row["commentary_after"],
+            excerpt_plan=_SPANS.validate_json(row["excerpt_plan_json"]),
+            title=row["title"],
+            title_options=_STR_LIST.validate_json(row["title_options_json"]),
+            cta=row["cta"],
+            transformation_summary=row["transformation_summary"],
+            status=row["status"],
+            prompt_version=row["prompt_version"],
+            model_alias=row["model_alias"],
+            llm_call_id=row["llm_call_id"],
+            created_at=_dt(row["created_at"]) or _fail("created_at"),
+        )
+
+
+class ClaimRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def add_many(self, claims: list[Claim]) -> list[Claim]:
+        try:
+            self._conn.executemany(
+                """
+                INSERT INTO claims (
+                    id, editorial_version_id, claim_text, claim_type, importance,
+                    evidence_refs_json, confidence, status, reviewer_note, origin, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        c.id,
+                        c.editorial_version_id,
+                        c.claim_text,
+                        c.claim_type.value,
+                        c.importance.value,
+                        json.dumps(c.evidence_refs),
+                        c.confidence,
+                        c.status.value,
+                        c.reviewer_note,
+                        c.origin,
+                        _iso(c.created_at),
+                    )
+                    for c in claims
+                ],
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = "claim duplicate or editorial version missing"
+            raise DuplicateRecordError(msg) from exc
+        return claims
+
+    def get(self, claim_id: str) -> Claim:
+        row = self._conn.execute("SELECT * FROM claims WHERE id = ?", (claim_id,)).fetchone()
+        if row is None:
+            msg = f"claim {claim_id!r} not found"
+            raise NotFoundError(msg)
+        return self._to_model(row)
+
+    def list(self, editorial_version_id: str) -> list[Claim]:
+        rows = self._conn.execute(
+            "SELECT * FROM claims WHERE editorial_version_id = ? ORDER BY created_at, rowid",
+            (editorial_version_id,),
+        )
+        return [self._to_model(r) for r in rows.fetchall()]
+
+    def set_status(self, claim_id: str, status: ClaimStatus, note: str | None) -> Claim:
+        cur = self._conn.execute(
+            "UPDATE claims SET status = ?, reviewer_note = ? WHERE id = ?",
+            (status.value, note, claim_id),
+        )
+        if cur.rowcount != 1:
+            msg = f"claim {claim_id!r} not found"
+            raise NotFoundError(msg)
+        return self.get(claim_id)
+
+    @staticmethod
+    def _to_model(row: sqlite3.Row) -> Claim:
+        return Claim(
+            id=row["id"],
+            editorial_version_id=row["editorial_version_id"],
+            claim_text=row["claim_text"],
+            claim_type=row["claim_type"],
+            importance=row["importance"],
+            evidence_refs=_STR_LIST.validate_json(row["evidence_refs_json"]),
+            confidence=row["confidence"],
+            status=row["status"],
+            reviewer_note=row["reviewer_note"],
+            origin=row["origin"],
+            created_at=_dt(row["created_at"]) or _fail("created_at"),
+        )
+
+
+class ReviewEventRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def add(self, event: ReviewEvent) -> ReviewEvent:
+        try:
+            self._conn.execute(
+                """
+                INSERT INTO review_events (
+                    id, object_type, object_id, decision, reason_codes_json, notes, reviewer,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.id,
+                    event.object_type,
+                    event.object_id,
+                    event.decision,
+                    json.dumps(event.reason_codes),
+                    event.notes,
+                    event.reviewer,
+                    _iso(event.created_at),
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = f"review event {event.id!r} already exists"
+            raise DuplicateRecordError(msg) from exc
+        return event
+
+    def list(
+        self, object_type: str | None = None, object_id: str | None = None
+    ) -> list[ReviewEvent]:
+        if object_id is None:
+            rows = self._conn.execute("SELECT * FROM review_events ORDER BY created_at, rowid")
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM review_events WHERE object_type = ? AND object_id = ? "
+                "ORDER BY created_at, rowid",
+                (object_type, object_id),
+            )
+        return [self._to_model(r) for r in rows.fetchall()]
+
+    @staticmethod
+    def _to_model(row: sqlite3.Row) -> ReviewEvent:
+        return ReviewEvent(
+            id=row["id"],
+            object_type=row["object_type"],
+            object_id=row["object_id"],
+            decision=row["decision"],
+            reason_codes=_STR_LIST.validate_json(row["reason_codes_json"]),
+            notes=row["notes"],
+            reviewer=row["reviewer"],
             created_at=_dt(row["created_at"]) or _fail("created_at"),
         )
 

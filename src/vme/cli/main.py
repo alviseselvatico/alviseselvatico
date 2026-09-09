@@ -1,5 +1,6 @@
 """``vme`` CLI: ``source``, ``policy``, ``media``, ``transcribe``, ``transcript``,
-``segment``, ``candidate``, ``rank``, ``ranking``, ``llm``, ``db migrate``.
+``segment``, ``candidate``, ``rank``, ``ranking``, ``llm``, ``editorial``, ``claim``,
+``review``, ``db migrate``.
 
 Every invocation gets a correlation id, logs JSON to stderr and prints one JSON document
 to stdout. Exit codes: 0 ok, 1 error, 2 usage, 3 blocked by the rights gate.
@@ -19,7 +20,18 @@ from pydantic import BaseModel, ValidationError
 
 from vme import __version__
 from vme.config import Settings, load_settings
-from vme.domain.models import BasisType, RightsPolicy, Source, SourceKind, new_id, utc_now
+from vme.domain.models import (
+    BasisType,
+    ClaimStatus,
+    InvalidTransitionError,
+    RightsPolicy,
+    Source,
+    SourceKind,
+    new_id,
+    utc_now,
+)
+from vme.editorial.review import approve, recheck, reject, resolve_claim
+from vme.editorial.service import EditorialConfig, generate_editorial
 from vme.ingestion.probe import ProbeError
 from vme.ingestion.register import IngestionError, register_local_media
 from vme.llm.factory import build_llm
@@ -264,6 +276,86 @@ def cmd_llm_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
     ]
 
 
+def _reviewer(args: argparse.Namespace, settings: Settings) -> str:
+    return args.reviewer or settings.reviewer
+
+
+def _draft_view(store: Store, draft_id: str) -> Any:
+    draft = store.editorial.get(draft_id)
+    return {
+        "draft": draft,
+        "claims": store.claims.list(draft.id),
+        "events": store.reviews.list("editorial_version", draft.id),
+    }
+
+
+def cmd_editorial_generate(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    llm = build_llm(settings)
+    config = EditorialConfig(
+        vertical=args.vertical or settings.vertical,
+        audience=args.audience or settings.audience,
+        target_ms=args.target_ms or settings.target_clip_ms,
+        max_tokens=settings.llm_max_tokens,
+        use_ranking=not args.no_ranking,
+    )
+    result = generate_editorial(store, args.candidate, llm, config)
+    return {
+        "draft": result.draft,
+        "claims": result.claims,
+        "llm_calls": [c.id for c in result.llm_calls],
+    }
+
+
+def cmd_editorial_show(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return _draft_view(store, args.id)
+
+
+def cmd_editorial_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return [
+        d.model_dump(mode="json", exclude={"excerpt_plan", "title_options"})
+        for d in store.editorial.list(args.candidate)
+    ]
+
+
+def cmd_claim_resolve(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    status = ClaimStatus(args.status.upper().replace("-", "_"))
+    claim, event, draft = resolve_claim(
+        store, args.id, status, reviewer=_reviewer(args, settings), notes=args.note
+    )
+    return {"claim": claim, "event": event, "draft_status": draft.status.value}
+
+
+def cmd_claim_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return store.claims.list(args.draft)
+
+
+def cmd_review_approve(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    outcome = approve(store, args.id, reviewer=_reviewer(args, settings), notes=args.note)
+    return {"draft": outcome.draft, "event": outcome.event}
+
+
+def cmd_review_reject(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    outcome = reject(
+        store,
+        args.id,
+        reviewer=_reviewer(args, settings),
+        reason_codes=[r for part in args.reason for r in part.split(",")],
+        notes=args.note,
+    )
+    return {"draft": outcome.draft, "event": outcome.event}
+
+
+def cmd_review_recheck(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    outcome = recheck(store, args.id, reviewer=_reviewer(args, settings))
+    if outcome is None:
+        return {"draft": store.editorial.get(args.id), "event": None, "changed": False}
+    return {"draft": outcome.draft, "event": outcome.event, "changed": True}
+
+
+def cmd_review_events(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return store.reviews.list(args.object_type, args.object_id)
+
+
 Handler = Callable[[argparse.Namespace, Store, Settings], Any]
 
 
@@ -407,6 +499,67 @@ def build_parser() -> argparse.ArgumentParser:
     p = llm.add_parser("list", help="list LLM calls (without responses)")
     p.add_argument("--purpose")
     p.set_defaults(handler=cmd_llm_list)
+
+    # editorial / claim / review
+    editorial = sub.add_parser(
+        "editorial", help="editorial drafts (text-only, D014)"
+    ).add_subparsers(dest="command", required=True)
+    p = editorial.add_parser("generate", help="generate a draft + claims for a candidate")
+    p.add_argument("--candidate", required=True)
+    p.add_argument("--target-ms", type=int, help="target clip duration (VME_TARGET_CLIP_MS)")
+    p.add_argument("--vertical")
+    p.add_argument("--audience")
+    p.add_argument("--no-ranking", action="store_true", help="ignore ranking rationale/claims")
+    p.set_defaults(handler=cmd_editorial_generate)
+    p = editorial.add_parser("show", help="draft with claims and review events")
+    p.add_argument("id")
+    p.set_defaults(handler=cmd_editorial_show)
+    p = editorial.add_parser("list", help="list drafts")
+    p.add_argument("--candidate")
+    p.set_defaults(handler=cmd_editorial_list)
+
+    claim = sub.add_parser(
+        "claim", help="generated claims (human-only fact check, D010)"
+    ).add_subparsers(dest="command", required=True)
+    p = claim.add_parser("resolve", help="mark a claim human-approved or removed")
+    p.add_argument("id")
+    p.add_argument("--status", required=True, choices=["human-approved", "removed"])
+    p.add_argument("--reviewer", help="operator identity (default: VME_REVIEWER)")
+    p.add_argument("--note")
+    p.set_defaults(handler=cmd_claim_resolve)
+    p = claim.add_parser("list", help="claims of a draft")
+    p.add_argument("--draft", required=True)
+    p.set_defaults(handler=cmd_claim_list)
+
+    review = sub.add_parser("review", help="human review decisions (audited)").add_subparsers(
+        dest="command", required=True
+    )
+    p = review.add_parser(
+        "approve", help="approve a needs_review draft (re-checks rights + claims)"
+    )
+    p.add_argument("id")
+    p.add_argument("--reviewer")
+    p.add_argument("--note")
+    p.set_defaults(handler=cmd_review_approve)
+    p = review.add_parser("reject", help="reject a needs_review draft with reason codes")
+    p.add_argument("id")
+    p.add_argument(
+        "--reason",
+        action="append",
+        required=True,
+        help="reason code (repeatable or comma-separated)",
+    )
+    p.add_argument("--reviewer")
+    p.add_argument("--note")
+    p.set_defaults(handler=cmd_review_reject)
+    p = review.add_parser("recheck", help="lift a factcheck/rights block when it no longer holds")
+    p.add_argument("id")
+    p.add_argument("--reviewer")
+    p.set_defaults(handler=cmd_review_recheck)
+    p = review.add_parser("events", help="audit log")
+    p.add_argument("--object-type", help="editorial_version | claim")
+    p.add_argument("--object-id")
+    p.set_defaults(handler=cmd_review_events)
     return parser
 
 
@@ -473,6 +626,7 @@ def run(argv: Sequence[str] | None, *, out: Any, err: Any) -> int:
         DuplicateRecordError,
         IngestionError,
         ProbeError,
+        InvalidTransitionError,
         ValueError,
         RuntimeError,
     ) as exc:
