@@ -57,7 +57,7 @@ def _transcript(sentences: list[str], *, pause_ms: int = 0, with_words: bool = T
 def test_config_validation() -> None:
     with pytest.raises(ValueError, match="min_ms <= target_ms"):
         SegmentationConfig(min_ms=10, target_ms=5, max_ms=20)
-    assert created_by(SegmentationConfig()) == "segmenter:v0.1.0"
+    assert created_by(SegmentationConfig()) == "segmenter:v0.2.0"
 
 
 def test_sentences_split_on_punctuation_and_pauses() -> None:
@@ -92,7 +92,7 @@ def test_short_transcript_yields_single_candidate_with_context() -> None:
     (c,) = segment_transcript(t, SegmentationConfig(), now=NOW)
     assert c.start_ms == 0 and c.end_ms == t.duration_ms
     assert c.context_before == "" and c.context_after == ""
-    assert c.created_by == "segmenter:v0.1.0" and c.speaker is None and c.topic is None
+    assert c.created_by == "segmenter:v0.2.0" and c.speaker is None and c.topic is None
 
 
 def test_context_before_and_after_are_neighbouring_words() -> None:

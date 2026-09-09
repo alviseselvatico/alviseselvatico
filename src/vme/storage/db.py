@@ -16,6 +16,7 @@ from vme.storage.repositories import (
     CandidateRepository,
     ClaimRepository,
     EditorialRepository,
+    EvidenceRepository,
     LabelRepository,
     LlmCallRepository,
     MediaAssetRepository,
@@ -103,6 +104,7 @@ class Store:
         self.ranking = RankingRepository(conn)
         self.editorial = EditorialRepository(conn)
         self.claims = ClaimRepository(conn)
+        self.evidence = EvidenceRepository(conn)
         self.reviews = ReviewEventRepository(conn)
         self.renders = RenderRepository(conn)
         self.labels = LabelRepository(conn)

@@ -42,6 +42,18 @@ class Settings(BaseSettings):
         default="general English-speaking short-form viewers", validation_alias="VME_AUDIENCE"
     )
 
+    # --- Evidence retrieval / automated fact check (Phase 1, D030)
+    evidence_alias: str = Field(default="strong", validation_alias="VME_EVIDENCE_ALIAS")
+    evidence_search_tool: str = Field(
+        default="web_search_20260209", validation_alias="VME_EVIDENCE_SEARCH_TOOL"
+    )
+    evidence_max_searches: int = Field(
+        default=3, validation_alias="VME_EVIDENCE_MAX_SEARCHES", ge=1, le=10
+    )
+    factcheck_human_importance: str = Field(
+        default="HIGH", validation_alias="VME_FACTCHECK_HUMAN_IMPORTANCE"
+    )
+
     # --- Editorial / review
     target_clip_ms: int = Field(default=45_000, validation_alias="VME_TARGET_CLIP_MS", ge=1000)
     reviewer: str = Field(default="", validation_alias="VME_REVIEWER")
@@ -79,6 +91,10 @@ class Settings(BaseSettings):
 
     # --- Logging
     log_level: str = Field(default="INFO", validation_alias="VME_LOG_LEVEL")
+
+    def llm_alias_for_factcheck(self) -> str:
+        """The evaluator always runs on the strong tier: a verdict is a high-stakes decision."""
+        return "strong"
 
     def secret_values(self) -> tuple[str, ...]:
         """Non-empty secret values, for log redaction."""

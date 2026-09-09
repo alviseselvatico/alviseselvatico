@@ -22,6 +22,7 @@ from vme import __version__
 from vme.config import Settings, load_settings
 from vme.domain.models import (
     BasisType,
+    ClaimImportance,
     ClaimStatus,
     InvalidTransitionError,
     LabelDecision,
@@ -35,6 +36,8 @@ from vme.domain.models import (
 from vme.editorial.review import approve, recheck, reject, resolve_claim
 from vme.editorial.service import EditorialConfig, generate_editorial
 from vme.evaluation.benchmark import compare_benchmarks, run_benchmark
+from vme.factcheck.evaluator import EvaluationPolicy, evaluate_claim
+from vme.factcheck.evidence import AnthropicWebSearchRetriever
 from vme.ingestion.probe import ProbeError
 from vme.ingestion.register import IngestionError, register_local_media
 from vme.labeling.service import add_label, candidate_key, golden_rows, import_labels
@@ -50,6 +53,8 @@ from vme.rendering.plan import PlanConfig, build_render_plan
 from vme.rendering.service import render_plan_to_file
 from vme.reporting.cost import build_cost_report, load_prices
 from vme.rights.gate import Action, RightsBlockedError, check
+from vme.segmentation.boundary import BoundaryConfig
+from vme.segmentation.refine import refine_candidates
 from vme.segmentation.segmenter import SegmentationConfig
 from vme.segmentation.service import segment_and_store
 from vme.storage.db import Store, applied_versions, migrate
@@ -229,6 +234,87 @@ def cmd_segment(args: argparse.Namespace, store: Store, _: Settings) -> Any:
             kwargs[name] = value
     config = SegmentationConfig(**kwargs)
     return segment_and_store(store, args.transcript, config)
+
+
+def cmd_candidate_refine(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    defaults = BoundaryConfig()
+    config = BoundaryConfig(
+        min_ms=args.min_ms if args.min_ms is not None else defaults.min_ms,
+        max_ms=args.max_ms if args.max_ms is not None else defaults.max_ms,
+        max_extend_ms=args.max_extend_ms
+        if args.max_extend_ms is not None
+        else defaults.max_extend_ms,
+        allow_extend=not args.no_extend,
+    )
+    result = refine_candidates(store, args.transcript, config, source_created_by=args.created_by)
+    return {
+        "refined": len(result.refined),
+        "unchanged": result.unchanged,
+        "edits": {
+            cid: {"start_ms": e.start_ms, "end_ms": e.end_ms, "reasons": e.reasons}
+            for cid, e in result.edits.items()
+        },
+        "candidates": result.refined,
+    }
+
+
+def cmd_claim_evaluate(args: argparse.Namespace, store: Store, settings: Settings) -> Any:
+    llm = build_llm(settings)
+    retriever = AnthropicWebSearchRetriever(
+        models={"cheap": settings.llm_model_cheap, "strong": settings.llm_model_strong},
+        alias=settings.evidence_alias,
+        api_key=settings.anthropic_api_key.get_secret_value() or None,
+        search_tool_type=settings.evidence_search_tool,
+        max_searches=args.max_searches or settings.evidence_max_searches,
+    )
+    importances = frozenset(
+        ClaimImportance(x.strip().upper())
+        for x in settings.factcheck_human_importance.split(",")
+        if x.strip()
+    )
+    policy = EvaluationPolicy(human_confirmation_for=importances)
+    claim_ids = (
+        [args.claim]
+        if args.claim
+        else [c.id for c in store.claims.list(args.draft) if c.status is ClaimStatus.UNVERIFIED]
+    )
+    results = []
+    for cid in claim_ids:
+        ev = evaluate_claim(
+            store,
+            cid,
+            retriever=retriever,
+            llm=llm,
+            alias=settings.llm_alias_for_factcheck(),
+            policy=policy,
+            max_tokens=settings.llm_max_tokens,
+        )
+        results.append(
+            {
+                "claim_id": cid,
+                "claim_text": ev.claim.claim_text,
+                "machine_status": ev.verdict.status.value if ev.verdict else None,
+                "applied_status": ev.applied_status.value,
+                "note": ev.note,
+                "reason": ev.verdict.reason if ev.verdict else None,
+                "qualification_needed": ev.verdict.qualification_needed if ev.verdict else None,
+                "evidence": [
+                    {"id": f"E{i}", "url": e.url, "title": e.title, "published": e.published}
+                    for i, e in enumerate(ev.evidence, start=1)
+                ],
+                "supporting": ev.verdict.supporting_evidence_ids if ev.verdict else [],
+                "llm_calls": [c.id for c in ev.calls],
+            }
+        )
+    draft_id = (
+        args.draft or store.claims.get(claim_ids[0]).editorial_version_id if claim_ids else None
+    )
+    status = store.editorial.get(draft_id).status.value if draft_id else None
+    return {"draft_id": draft_id, "draft_status": status, "claims": results}
+
+
+def cmd_evidence_list(args: argparse.Namespace, store: Store, _: Settings) -> Any:
+    return store.evidence.list(args.claim)
 
 
 def cmd_candidate_show(args: argparse.Namespace, store: Store, _: Settings) -> Any:
@@ -740,6 +826,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--transcript", required=True)
     p.add_argument("--created-by", help="filter, e.g. segmenter:v0.1.0")
     p.set_defaults(handler=cmd_candidate_list)
+    p = candidate.add_parser("refine", help="boundary editor: derived candidates with fixed edges")
+    p.add_argument("--transcript", required=True)
+    p.add_argument("--created-by", help="only refine candidates from this creator")
+    p.add_argument("--min-ms", type=int)
+    p.add_argument("--max-ms", type=int)
+    p.add_argument("--max-extend-ms", type=int)
+    p.add_argument("--no-extend", action="store_true", help="trim only, never extend a span")
+    p.set_defaults(handler=cmd_candidate_refine)
     p = candidate.add_parser("export", help="candidates without scores (JSONL) for blind labeling")
     p.add_argument("--out", required=True)
     p.add_argument("--transcript", help="default: every transcript")
@@ -809,6 +903,21 @@ def build_parser() -> argparse.ArgumentParser:
     p = claim.add_parser("list", help="claims of a draft")
     p.add_argument("--draft", required=True)
     p.set_defaults(handler=cmd_claim_list)
+    p = claim.add_parser(
+        "evaluate", help="retrieve web evidence and evaluate UNVERIFIED claims (D030)"
+    )
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--draft")
+    g.add_argument("--claim")
+    p.add_argument("--max-searches", type=int)
+    p.set_defaults(handler=cmd_claim_evaluate)
+
+    evidence = sub.add_parser("evidence", help="retrieved evidence").add_subparsers(
+        dest="command", required=True
+    )
+    p = evidence.add_parser("list", help="evidence items of a claim")
+    p.add_argument("--claim", required=True)
+    p.set_defaults(handler=cmd_evidence_list)
 
     review = sub.add_parser("review", help="human review decisions (audited)").add_subparsers(
         dest="command", required=True

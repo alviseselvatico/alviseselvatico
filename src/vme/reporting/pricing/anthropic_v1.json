@@ -1,6 +1,7 @@
 {
   "version": "anthropic_2026-06-24",
   "currency": "USD",
+  "per_1000_web_searches": 10.0,
   "source": "Anthropic first-party API list prices; verify before quoting externally",
   "per_million_tokens": {
     "claude-opus-5":     {"input": 5.00,  "output": 25.00},

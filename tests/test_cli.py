@@ -163,7 +163,7 @@ def test_transcribe_and_segment_pipeline(
         "--max-ms", "9000",
     )  # fmt: skip
     assert code == EXIT_OK and len(cands) >= 2
-    assert all(c["created_by"] == "segmenter:v0.1.0" for c in cands)
+    assert all(c["created_by"] == "segmenter:v0.2.0" for c in cands)
     assert logs[-2]["event"] == "candidates_created"
     code, again, _ = _vme("segment", "--transcript", summary["id"], "--min-ms", "3000",
                           "--target-ms", "6000", "--max-ms", "9000")  # fmt: skip

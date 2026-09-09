@@ -34,6 +34,7 @@ class PriceList(BaseModel):
     version: str
     currency: str = "USD"
     source: str = ""
+    per_1000_web_searches: float | None = Field(default=None, ge=0)
     per_million_tokens: dict[str, ModelPrice]
 
     def resolve(self, model_id: str | None) -> ModelPrice | None:
@@ -89,6 +90,7 @@ class StageCost:
     latency_ms: int
     cost_usd: float | None
     unmetered_attempts: int = 0
+    web_searches: int = 0
 
     @property
     def avg_latency_ms(self) -> int:
@@ -103,6 +105,10 @@ class CostReport:
     total_cost_usd: float
     unpriced_models: list[str]
     counts: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def web_searches(self) -> int:
+        return sum(s.web_searches for s in self.stages)
 
     @property
     def unmetered_attempts(self) -> int:
@@ -164,6 +170,12 @@ def build_cost_report(store: Store, prices: PriceList) -> CostReport:
         cost = prices.cost(model_id, in_tok, out_tok)
         if cost is None and (in_tok or out_tok):
             unpriced.add(model_id or "(not reported)")
+        searches = sum(int(c.parameters.get("web_search_requests") or 0) for c in group)
+        if searches:
+            if prices.per_1000_web_searches is None:
+                unpriced.add("web_search")
+            else:
+                cost = (cost or 0.0) + searches * prices.per_1000_web_searches / 1000
         total += cost or 0.0
         stages.append(
             StageCost(
@@ -179,6 +191,7 @@ def build_cost_report(store: Store, prices: PriceList) -> CostReport:
                 cost_usd=round(cost, 6) if cost is not None else None,
                 unmetered_attempts=sum(max(0, c.attempts - 1) for c in group)
                 + sum(c.validation_status is LlmValidationStatus.FAILED for c in group),
+                web_searches=searches,
             )
         )
 

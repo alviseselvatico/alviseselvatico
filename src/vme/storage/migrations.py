@@ -280,4 +280,27 @@ MIGRATIONS: tuple[Migration, ...] = (
         ALTER TABLE labels ADD COLUMN provisional INTEGER NOT NULL DEFAULT 0;
         """,
     ),
+    Migration(
+        version=9,
+        name="phase1_boundary_evidence",
+        sql="""
+        ALTER TABLE candidates ADD COLUMN derived_from_id TEXT REFERENCES candidates(id);
+        ALTER TABLE claims ADD COLUMN machine_status TEXT;
+        ALTER TABLE claims ADD COLUMN machine_reason TEXT;
+        ALTER TABLE claims ADD COLUMN evaluated_at TEXT;
+
+        CREATE TABLE evidence (
+            id           TEXT PRIMARY KEY,
+            claim_id     TEXT NOT NULL REFERENCES claims(id),
+            retriever    TEXT NOT NULL,
+            url          TEXT NOT NULL,
+            title        TEXT,
+            snippet      TEXT,
+            published    TEXT,
+            retrieved_at TEXT NOT NULL,
+            llm_call_id  TEXT REFERENCES llm_calls(id)
+        );
+        CREATE INDEX evidence_claim_idx ON evidence(claim_id);
+        """,
+    ),
 )

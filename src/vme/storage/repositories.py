@@ -17,6 +17,7 @@ from vme.domain.models import (
     ClaimStatus,
     DraftStatus,
     EditorialVersion,
+    Evidence,
     ExcerptSpan,
     Label,
     LlmCall,
@@ -363,8 +364,8 @@ class CandidateRepository:
                 """
                 INSERT INTO candidates (
                     id, transcript_id, start_ms, end_ms, context_before, context_after,
-                    speaker, topic, candidate_text, created_by, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    speaker, topic, candidate_text, created_by, derived_from_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -378,6 +379,7 @@ class CandidateRepository:
                         c.topic,
                         c.candidate_text,
                         c.created_by,
+                        c.derived_from_id,
                         _iso(c.created_at),
                     )
                     for c in candidates
@@ -424,6 +426,7 @@ class CandidateRepository:
             topic=row["topic"],
             candidate_text=row["candidate_text"],
             created_by=row["created_by"],
+            derived_from_id=row["derived_from_id"],
             created_at=_dt(row["created_at"]) or _fail("created_at"),
         )
 
@@ -783,6 +786,36 @@ class ClaimRepository:
             raise NotFoundError(msg)
         return self.get(claim_id)
 
+    def set_machine_verdict(
+        self,
+        claim_id: str,
+        *,
+        status: ClaimStatus,
+        machine_status: str,
+        machine_reason: str,
+        evaluated_at: datetime,
+        confidence: float | None,
+        note: str | None,
+    ) -> Claim:
+        cur = self._conn.execute(
+            "UPDATE claims SET status = ?, machine_status = ?, machine_reason = ?, "
+            "evaluated_at = ?, confidence = ?, reviewer_note = COALESCE(?, reviewer_note) "
+            "WHERE id = ?",
+            (
+                status.value,
+                machine_status,
+                machine_reason,
+                _iso(evaluated_at),
+                confidence,
+                note,
+                claim_id,
+            ),
+        )
+        if cur.rowcount != 1:
+            msg = f"claim {claim_id!r} not found"
+            raise NotFoundError(msg)
+        return self.get(claim_id)
+
     @staticmethod
     def _to_model(row: sqlite3.Row) -> Claim:
         return Claim(
@@ -796,8 +829,64 @@ class ClaimRepository:
             status=row["status"],
             reviewer_note=row["reviewer_note"],
             origin=row["origin"],
+            machine_status=row["machine_status"],
+            machine_reason=row["machine_reason"],
+            evaluated_at=_dt(row["evaluated_at"]),
             created_at=_dt(row["created_at"]) or _fail("created_at"),
         )
+
+
+class EvidenceRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def add_many(self, items: list[Evidence]) -> list[Evidence]:
+        try:
+            self._conn.executemany(
+                """
+                INSERT INTO evidence (
+                    id, claim_id, retriever, url, title, snippet, published, retrieved_at,
+                    llm_call_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        e.id,
+                        e.claim_id,
+                        e.retriever,
+                        e.url,
+                        e.title,
+                        e.snippet,
+                        e.published,
+                        _iso(e.retrieved_at),
+                        e.llm_call_id,
+                    )
+                    for e in items
+                ],
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = "evidence duplicate or claim/llm_call missing"
+            raise DuplicateRecordError(msg) from exc
+        return items
+
+    def list(self, claim_id: str) -> list[Evidence]:
+        rows = self._conn.execute(
+            "SELECT * FROM evidence WHERE claim_id = ? ORDER BY retrieved_at, rowid", (claim_id,)
+        )
+        return [
+            Evidence(
+                id=r["id"],
+                claim_id=r["claim_id"],
+                retriever=r["retriever"],
+                url=r["url"],
+                title=r["title"],
+                snippet=r["snippet"],
+                published=r["published"],
+                retrieved_at=_dt(r["retrieved_at"]) or _fail("retrieved_at"),
+                llm_call_id=r["llm_call_id"],
+            )
+            for r in rows.fetchall()
+        ]
 
 
 class ReviewEventRepository:

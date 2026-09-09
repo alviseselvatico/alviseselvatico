@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from vme.domain.models import LlmValidationStatus
 from vme.editorial.schemas import ClaimExtraction, EditorialDraft
+from vme.factcheck.evaluator import FactCheckVerdict
 from vme.llm.base import LlmOutcome, LlmRequest
 from vme.ranking.schemas import COMPONENTS, LLM_PENALTIES, CandidateScore
 
@@ -128,6 +129,39 @@ class FakeLlm:
                     ]
                 }
             )
+        elif schema is FactCheckVerdict:
+            claim = request.user.split("CLAIM (", 1)[1].split("\n", 2)[1].lower()
+            n_items = request.user.count("[E")
+            ids = [f"E{i}" for i in range(1, n_items + 1)]
+            if "[supported]" in claim:
+                data = {
+                    "status": "SUPPORTED",
+                    "reason": "matches evidence",
+                    "supporting_evidence_ids": ids,
+                    "qualification_needed": None,
+                }
+            elif "[contradicted]" in claim:
+                data = {
+                    "status": "CONTRADICTED",
+                    "reason": "evidence says otherwise",
+                    "supporting_evidence_ids": ids[:1],
+                    "qualification_needed": None,
+                }
+            elif "[ambiguous]" in claim:
+                data = {
+                    "status": "AMBIGUOUS",
+                    "reason": "depends",
+                    "supporting_evidence_ids": [],
+                    "qualification_needed": "only after 1933",
+                }
+            else:
+                data = {
+                    "status": "INSUFFICIENT",
+                    "reason": "nothing bears on it",
+                    "supporting_evidence_ids": [],
+                    "qualification_needed": None,
+                }
+            parsed = FactCheckVerdict.model_validate(data)
         else:  # pragma: no cover
             raise AssertionError(f"unexpected schema {schema}")
         return LlmOutcome(

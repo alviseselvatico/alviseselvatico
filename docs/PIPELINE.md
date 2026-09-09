@@ -127,9 +127,15 @@ strong-tier finalists and orders 70-80% of human-ordered pairs the same way; the
 cost $1.10 in 119 calls. Provisional labels yield to the first human label on each
 candidate, so the operator can confirm or overturn them one by one.
 
+Two Phase 1 additions run on top of this: `claim evaluate` retrieves web evidence (Anthropic
+web search, priced per search in the cost report) and applies a structured verdict under the
+D030 policy, so low- and medium-importance claims can be cleared by the machine while
+high-importance ones wait for a human; `candidate refine` and the `v0.2.0` segmenter apply a
+deterministic boundary editor (D031) that aligns spans to sentence edges and drops boilerplate.
+
 ## 6. Not built
 
-Publishing, dashboards, queues, evidence retrieval, TTS, smart crop, multi-tenancy. Draft
+Publishing, dashboards, queues, TTS, smart crop, multi-tenancy. Draft
 text cannot be edited from the CLI: a rejected draft is regenerated, not patched. Claim
 de-duplication is textual, so the transformer and the extractor can both file the same fact
-in different words.
+in different words. The LLM boundary editor of PROMPT_CONTRACTS §5 is not built.

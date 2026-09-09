@@ -14,8 +14,9 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from vme.domain.models import Candidate, Transcript, Word, new_id, utc_now
+from vme.segmentation.boundary import BoundaryConfig, refine_span
 
-SEGMENTER_VERSION = "v0.1.0"
+SEGMENTER_VERSION = "v0.2.0"
 _SENTENCE_END = (".", "?", "!")
 
 
@@ -28,6 +29,7 @@ class SegmentationConfig:
     sentence_pause_ms: int = 700
     hard_pause_ms: int = 1_500
     context_words: int = 40
+    refine: bool = True  # v0.2.0: trim fragments and edge boilerplate (never extend)
 
     def __post_init__(self) -> None:
         if not (0 < self.min_ms <= self.target_ms <= self.max_ms):
@@ -130,25 +132,40 @@ def segment_transcript(
     sentences = split_sentences(words, config)
     windows = build_windows(sentences, config)
     candidates: list[Candidate] = []
+    boundary = BoundaryConfig(min_ms=config.min_ms, max_ms=config.max_ms, allow_extend=False)
     cursor = 0  # index into `words` of the first word of the current window
     for window in windows:
         n_words = sum(len(s.words) for s in window)
-        before = words[max(0, cursor - config.context_words) : cursor]
-        after = words[cursor + n_words : cursor + n_words + config.context_words]
-        candidates.append(
-            Candidate(
-                id=new_id("cnd"),
-                transcript_id=transcript.id,
-                start_ms=window[0].start_ms,
-                end_ms=max(window[-1].end_ms, window[0].start_ms + 1),
-                context_before=" ".join(w.text for w in before),
-                context_after=" ".join(w.text for w in after),
-                speaker=None,
-                topic=None,
-                candidate_text=" ".join(s.text for s in window),
-                created_by=created_by(config),
-                created_at=now,
-            )
+        start_ms, end_ms = window[0].start_ms, max(window[-1].end_ms, window[0].start_ms + 1)
+        if config.refine:
+            edit = refine_span(words, start_ms, end_ms, boundary)
+            start_ms, end_ms = edit.start_ms, max(edit.end_ms, start_ms + 1)
+        kept = [
+            w
+            for w in words[cursor : cursor + n_words]
+            if w.start_ms >= start_ms and w.end_ms <= end_ms
+        ]
+        first_idx = cursor + next(
+            (i for i, w in enumerate(words[cursor : cursor + n_words]) if w.start_ms >= start_ms), 0
         )
+        before = words[max(0, first_idx - config.context_words) : first_idx]
+        after_start = first_idx + len(kept)
+        after = words[after_start : after_start + config.context_words]
+        if kept:
+            candidates.append(
+                Candidate(
+                    id=new_id("cnd"),
+                    transcript_id=transcript.id,
+                    start_ms=start_ms,
+                    end_ms=end_ms,
+                    context_before=" ".join(w.text for w in before),
+                    context_after=" ".join(w.text for w in after),
+                    speaker=None,
+                    topic=None,
+                    candidate_text=" ".join(w.text for w in kept),
+                    created_by=created_by(config),
+                    created_at=now,
+                )
+            )
         cursor += n_words
     return candidates

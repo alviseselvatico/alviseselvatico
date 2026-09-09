@@ -289,7 +289,8 @@ class Candidate(_Entity):
     speaker: str | None = None
     topic: str | None = None
     candidate_text: str = Field(min_length=1)
-    created_by: str = Field(min_length=1, description="e.g. 'segmenter:v0.1.0' or 'operator'")
+    created_by: str = Field(min_length=1, description="e.g. 'segmenter:v0.2.0' or 'operator'")
+    derived_from_id: str | None = Field(default=None, description="candidate this one refines")
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("created_at")
@@ -532,6 +533,12 @@ class Claim(_Entity):
     status: ClaimStatus = ClaimStatus.UNVERIFIED
     reviewer_note: str | None = None
     origin: str = Field(min_length=1, description="which prompt produced it")
+    machine_status: str | None = Field(
+        default=None,
+        description="last automated verdict: SUPPORTED|CONTRADICTED|AMBIGUOUS|INSUFFICIENT",
+    )
+    machine_reason: str | None = None
+    evaluated_at: datetime | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("created_at")
@@ -543,6 +550,26 @@ class Claim(_Entity):
     @property
     def blocking(self) -> bool:
         return self.status in BLOCKING_CLAIM_STATUSES
+
+
+class Evidence(_Entity):
+    """A retrieved document excerpt linked to a claim (guardrails §7)."""
+
+    id: str = Field(min_length=1)
+    claim_id: str = Field(min_length=1)
+    retriever: str = Field(min_length=1)
+    url: str = Field(min_length=1)
+    title: str | None = None
+    snippet: str | None = None
+    published: str | None = None
+    retrieved_at: datetime = Field(default_factory=utc_now)
+    llm_call_id: str | None = None
+
+    @field_validator("retrieved_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        _require_aware(value, "retrieved_at")
+        return value
 
 
 class ReviewEvent(_Entity):
